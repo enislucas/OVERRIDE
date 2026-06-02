@@ -54,12 +54,27 @@ Open `OVERRIDE.hta` → **DISARM ALL**, then delete the folder.
 - `OVERRIDE.hta` — control panel (this is the one you open)
 - `wake_quiz.hta` — the math gate that appears when the alarm fires
 - `engine.ps1` — plays the sound + locks the volume
-- `watchdog.ps1` — respawns the engine if it's killed
 - `watchdog.ps1` — respawns the engine if it's killed (and vice-versa)
 - `arm.ps1` — creates/removes the scheduled tasks
 - `make_sounds.ps1` — regenerates the synthesized sounds in `sounds/`
 - `config.json` — your saved alarms and settings
 - `sounds/` — the rotating alarm clips (WAV)
+
+## How it works (for contributors)
+- One alarm time = one **daily Windows Scheduled Task** that runs `engine.ps1`.
+- `engine.ps1` plays a looping, escalating sound (`System.Media.SoundPlayer`), forces the
+  volume to 100% via the Core Audio API, opens `wake_quiz.hta`, and writes a heartbeat file.
+- `engine.ps1` and `watchdog.ps1` **guard each other** — kill one and the other relaunches
+  it. Both stop the instant the quiz writes the session key to `UNLOCK`, the deadline passes,
+  or a `PANIC` file appears.
+- **The concurrency locks are intentional — please don't remove them.** `OVERRIDE.hta`
+  ignores repeated DEPLOY/TEST clicks while one is in progress (the `OV_BUSY` flag), and
+  `arm.ps1` takes a single-instance mutex (`Global\OVERRIDE_arm_lock`) and exits immediately
+  if another copy is already running. Without these, rapidly re-triggering DEPLOY can spawn
+  many concurrent scheduler runs that hang on the Windows Task Scheduler service and pile up
+  (high RAM/CPU).
+- Runtime files (`session.*`, `UNLOCK`, `PANIC`, `arm.log`) are created while an alarm runs
+  and are git-ignored.
 
 ## License & disclaimer
 MIT (see `LICENSE`). This is a fun, self-binding alarm — not a security product. On a PC
