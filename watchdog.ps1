@@ -18,6 +18,11 @@ if (-not (Test-Path $P_key) -or -not (Test-Path $P_dead)) { return }
 $sessionKey = (Get-Content $P_key -Raw).Trim()
 try { $deadline = [datetime]::Parse((Get-Content $P_dead -Raw).Trim()) } catch { return }
 
+# single-instance per session: never allow two watchdogs (caps the respawn loop).
+$gotWd = $true
+try { $script:wdMutex = New-Object System.Threading.Mutex($false, "Local\OVERRIDE_watchdog_lock"); $gotWd = $script:wdMutex.WaitOne(0) } catch { $gotWd = $true }
+if (-not $gotWd) { return }
+
 function Test-Unlocked {
   if (-not (Test-Path $P_unlk)) { return $false }
   $c = Get-Content $P_unlk -Raw; if ($c) { $c = $c.Trim() }
@@ -31,7 +36,7 @@ function Beat-Age([string]$p) {
 
 while (-not (Test-Stop)) {
   Set-Content -Path $P_beat2 -Value ((Get-Date).Ticks) -Encoding ASCII
-  if ((Beat-Age $P_beat) -gt 4) {
+  if ((Beat-Age $P_beat) -gt 8) {
     Start-Process powershell -WindowStyle Hidden -ArgumentList @(
       '-NoProfile','-Sta','-ExecutionPolicy','Bypass','-File',(Join-Path $Root 'engine.ps1'),'-Respawn') | Out-Null
     Start-Sleep -Seconds 2

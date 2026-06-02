@@ -26,6 +26,14 @@ $P_panic = Join-Path $root "PANIC"
 $P_mode  = Join-Path $root "session.mode"
 $P_label = Join-Path $root "session.label"
 
+# single-instance per user session: there must NEVER be more than one engine,
+# otherwise a slow PC + the watchdog respawn can cascade into a runaway. A second
+# engine fails to take the lock and exits immediately. (Local\ = session scope,
+# needs no special privilege; any failure falls through to "proceed".)
+$gotEng = $true
+try { $script:engMutex = New-Object System.Threading.Mutex($false, "Local\OVERRIDE_engine_lock"); $gotEng = $script:engMutex.WaitOne(0) } catch { $gotEng = $true }
+if (-not $gotEng) { return }
+
 # ---- config ----------------------------------------------------------------
 $cfg = $null; $cfgPath = Join-Path $root "config.json"
 if (Test-Path $cfgPath) { try { $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json } catch {} }
@@ -71,7 +79,7 @@ function Beat-Age([string]$p) {
   try { $t = [long]((Get-Content $p -Raw).Trim()); return (((Get-Date).Ticks - $t) / 10000000.0) } catch { return 9999 }
 }
 function Ensure-Watchdog {
-  if ((Beat-Age $P_beat2) -gt 4) {
+  if ((Beat-Age $P_beat2) -gt 8) {
     Start-Process powershell -WindowStyle Hidden -ArgumentList @(
       '-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'watchdog.ps1'),'-Root',"`"$root`"") | Out-Null
     Start-Sleep -Milliseconds 1200

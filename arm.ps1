@@ -8,8 +8,8 @@ param(
 $ErrorActionPreference = "Stop"
 # single-instance lock: if another arm.ps1 is already registering, bail out so
 # concurrent runs can't pile up and hang the Task Scheduler service.
-$script:armMutex = New-Object System.Threading.Mutex($false, "Global\OVERRIDE_arm_lock")
-try { $gotLock = $script:armMutex.WaitOne(0) } catch { $gotLock = $true }
+$gotLock = $true
+try { $script:armMutex = New-Object System.Threading.Mutex($false, "Local\OVERRIDE_arm_lock"); $gotLock = $script:armMutex.WaitOne(0) } catch { $gotLock = $true }
 if (-not $gotLock) { return }
 if ($Root -eq "") { $Root = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path } }
 $log = Join-Path $Root "arm.log"

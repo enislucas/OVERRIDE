@@ -70,12 +70,13 @@ Open `OVERRIDE.hta` → **DISARM ALL**, then delete the folder.
 - `engine.ps1` and `watchdog.ps1` **guard each other** — kill one and the other relaunches
   it. Both stop the instant the quiz writes the session key to `UNLOCK`, the deadline passes,
   or a `PANIC` file appears.
-- **The concurrency locks are intentional — please don't remove them.** `OVERRIDE.hta`
-  ignores repeated DEPLOY/TEST clicks while one is in progress (the `OV_BUSY` flag), and
-  `arm.ps1` takes a single-instance mutex (`Global\OVERRIDE_arm_lock`) and exits immediately
-  if another copy is already running. Without these, rapidly re-triggering DEPLOY can spawn
-  many concurrent scheduler runs that hang on the Windows Task Scheduler service and pile up
-  (high RAM/CPU).
+- **The single-instance locks are intentional — please don't remove them.** `OVERRIDE.hta`
+  ignores repeated DEPLOY/TEST clicks while one is in progress (`OV_BUSY`); and `arm.ps1`,
+  `engine.ps1`, and `watchdog.ps1` each take a per-session mutex (`Local\OVERRIDE_*_lock`)
+  so there is only ever **one** of each, no matter how many times you click. Without these,
+  repeated clicks plus the engine/watchdog respawn can cascade into many processes that
+  exhaust resources (it has crashed a machine). The respawn is capped at one engine + one
+  watchdog.
 - Runtime files (`session.*`, `UNLOCK`, `PANIC`, `arm.log`) are created while an alarm runs
   and are git-ignored.
 
