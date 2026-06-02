@@ -1,0 +1,14 @@
+# OVERRIDE runtime / session state (created while an alarm is running)
+session.*
+UNLOCK
+PANIC
+arm.log
+
+# user-supplied audio (may be copyrighted). The built-in sounds live in sounds/
+# and can be regenerated any time with make_sounds.ps1
+alarm.mp3
+
+# OS / editor cruft
+Thumbs.db
+desktop.ini
+.vscode/

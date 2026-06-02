@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "numQuestions": 3,
+  "difficulty": "medium",
+  "lockVolume": true,
+  "categories": {"arithmetic": true, "derivatives": false, "vectors": false, "matrices": false, "capitals": false},
+  "alarms": [
+    { "id": "a1", "label": "WAKE UP", "time": "07:00", "durationMin": 40, "enabled": true }
+  ]
+}

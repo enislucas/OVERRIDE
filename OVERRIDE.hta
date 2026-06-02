@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>OVERRIDE // wake protocol</title>
+<HTA:APPLICATION ID="app" APPLICATIONNAME="OverrideControl" BORDER="thin" CAPTION="yes"
+  SHOWINTASKBAR="yes" SINGLEINSTANCE="yes" SYSMENU="yes" MAXIMIZEBUTTON="yes"
+  WINDOWSTATE="maximize" SCROLL="yes" CONTEXTMENU="no" />
+<style type="text/css">
+  html,body{height:100%;margin:0;background:#000;color:#00ff66;overflow:auto;
+    font-family:Consolas,"Lucida Console",monospace;}
+  #rain{position:fixed;top:0;left:0;z-index:0;}
+  #wrap{position:relative;z-index:2;max-width:920px;margin:0 auto;padding:24px 26px 60px;}
+  .brand{font-size:13px;letter-spacing:4px;color:#0f8;opacity:.85;}
+  h1{font-size:40px;margin:4px 0 0;text-shadow:0 0 14px #00ff66;}
+  .tag{color:#7CFFB0;font-size:15px;margin:2px 0 20px;}
+  .card{background:rgba(0,14,5,0.84);border:1px solid #0a6;border-radius:8px;padding:16px 18px;
+    margin-bottom:16px;box-shadow:0 0 18px rgba(0,255,102,0.18),inset 0 0 26px rgba(0,255,102,0.05);}
+  .card h2{font-size:14px;letter-spacing:2px;color:#0f8;margin:0 0 12px;border-bottom:1px dashed #064;padding-bottom:6px;}
+  table{width:100%;border-collapse:collapse;}
+  th{font-size:11px;color:#5fd;letter-spacing:1px;text-align:left;padding:4px 6px;}
+  td{padding:5px 6px;}
+  input[type=text],input[type=number],select{background:#001a0a;color:#aeffd2;border:1px solid #0a5;
+    border-radius:6px;padding:7px 8px;font-family:Consolas,monospace;font-size:16px;outline:none;}
+  input.time{width:80px;text-align:center;font-size:20px;letter-spacing:2px;}
+  input.lbl{width:96%;}
+  input[type=text]:focus,input[type=number]:focus,select:focus{border-color:#00ff88;box-shadow:0 0 10px #00ff66;}
+  input[type=checkbox]{width:20px;height:20px;}
+  .btn{font-family:Consolas,monospace;letter-spacing:2px;cursor:pointer;border-radius:7px;
+    border:2px solid #00ff66;background:#00210f;color:#00ff88;padding:12px 22px;font-size:16px;
+    text-shadow:0 0 6px #0f8;margin:6px 8px 0 0;}
+  .btn:hover{background:#00ff66;color:#001b0b;}
+  .btn.red{border-color:#ff5151;color:#ff8a8a;background:#280707;}
+  .btn.red:hover{background:#ff5151;color:#1b0000;}
+  .btn.small{padding:6px 12px;font-size:13px;}
+  .x{color:#ff6b6b;border-color:#a33;}
+  #term{background:#00130a;border:1px solid #084;border-radius:8px;padding:12px;min-height:90px;
+    white-space:pre-wrap;font-size:13px;color:#7CFFB0;box-shadow:inset 0 0 20px rgba(0,255,102,.06);}
+  .row2{display:block;}
+  .muted{color:#2f7a52;font-size:12px;}
+  .blink{animation:bl 1s steps(1) infinite;} @keyframes bl{50%{opacity:0;}}
+  a{color:#0f8;}
+</style>
+</head>
+<body onload="boot()">
+<canvas id="rain"></canvas>
+<div id="wrap">
+  <div class="brand">OVERRIDE // WAKE PROTOCOL</div>
+  <h1>CONTROL PANEL<span class="blink">_</span></h1>
+  <div class="tag">An alarm you can't snooze your way out of. Set your times, hit DEPLOY, go to sleep.</div>
+
+  <div class="card">
+    <h2>// ALARMS &nbsp; (24-hour time, e.g. 06:30)</h2>
+    <table>
+      <thead><tr><th style="width:50px">ON</th><th style="width:110px">TIME</th><th>LABEL</th>
+      <th style="width:130px">GIVE UP (min)</th><th style="width:60px"></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <button class="btn small" onclick="addRow()">+ ADD ALARM</button>
+  </div>
+
+  <div class="card">
+    <h2>// DIFFICULTY</h2>
+    <table><tr>
+      <td>Questions to solve:&nbsp; <input type="number" id="nq" min="1" max="6" style="width:70px" /></td>
+      <td>Hardness:&nbsp;
+        <select id="diff">
+          <option value="easy">EASY (1-digit)</option>
+          <option value="medium">MEDIUM</option>
+          <option value="hard">HARD (2-digit x)</option>
+        </select></td>
+      <td><label><input type="checkbox" id="lockvol" /> &nbsp;LOCK VOLUME @ 100%</label></td>
+    </tr></table>
+    <div class="muted">Lock volume = pressing mute / volume-down does nothing until the math is solved.</div>
+  </div>
+
+  <div class="card">
+    <h2>// CATEGORIES &nbsp; (what appears in the gate)</h2>
+    <div style="font-size:17px;line-height:2.2">
+      <label><input type="checkbox" id="cat_arithmetic" /> Arithmetic</label> &nbsp;&nbsp;&nbsp;
+      <label><input type="checkbox" id="cat_derivatives" /> Derivatives</label> &nbsp;&nbsp;&nbsp;
+      <label><input type="checkbox" id="cat_vectors" /> Vectors</label> &nbsp;&nbsp;&nbsp;
+      <label><input type="checkbox" id="cat_matrices" /> Matrices</label> &nbsp;&nbsp;&nbsp;
+      <label><input type="checkbox" id="cat_capitals" /> Capitals</label>
+    </div>
+    <div class="muted">Each question is drawn at random from the ticked categories, at the chosen hardness.</div>
+  </div>
+
+  <div class="card">
+    <h2>// ACTIONS</h2>
+    <button class="btn" onclick="deploy()">&gt;&gt; DEPLOY (save + arm)</button>
+    <button class="btn" onclick="testNow()">&gt; TEST NOW (60s)</button>
+    <button class="btn red small" onclick="stopRun()">STOP TEST</button>
+    <button class="btn red" onclick="disarm()">x DISARM ALL</button>
+    <div id="term">&gt; ready.</div>
+    <div class="muted" style="margin-top:8px">Leave the PC ON or in SLEEP (not shut down) so alarms can fire. To uninstall: DISARM ALL, then delete this folder.</div>
+  </div>
+</div>
+
+<script type="text/javascript">
+var ROOT="", ALARMS=[];
+function fso(){ return new ActiveXObject("Scripting.FileSystemObject"); }
+function sh(){ return new ActiveXObject("WScript.Shell"); }
+
+function findRoot(){
+  var u=""; try{ u=location.href; }catch(e){} if(!u){ try{ u=document.URL; }catch(e){} }
+  u=u.replace(/^file:\/+/i,""); try{ u=decodeURIComponent(u); }catch(e){}
+  u=u.replace(/\//g,"\\"); var i=u.lastIndexOf("\\"); return (i>0)?u.substring(0,i):u;
+}
+function glitch(intensity,ms){
+  var b=document.body, steps=Math.floor(ms/40), i=0;
+  var iv=setInterval(function(){
+    var dx=(Math.random()*2-1)*intensity, dy=(Math.random()*2-1)*intensity, sk=(Math.random()*2-1)*intensity*0.3;
+    var tr="translate("+dx+"px,"+dy+"px) skewX("+sk+"deg)"; b.style.transform=tr; b.style.msTransform=tr;
+    i++; if(i>=steps){ clearInterval(iv); b.style.transform=""; b.style.msTransform=""; }
+  },40);
+}
+function setCats(o){
+  var keys=["arithmetic","derivatives","vectors","matrices","capitals"];
+  if(!o){ o={arithmetic:true}; }
+  for(var i=0;i<keys.length;i++){ document.getElementById('cat_'+keys[i]).checked=!!o[keys[i]]; }
+}
+function loadConfig(){
+  try{
+    var p=ROOT+"\\config.json";
+    if(fso().FileExists(p)){
+      var f=fso().OpenTextFile(p,1,false,0); var s=f.ReadAll(); f.Close();
+      var c=eval("("+s+")");
+      ALARMS=c.alarms||[];
+      document.getElementById('nq').value=c.numQuestions||3;
+      document.getElementById('diff').value=c.difficulty||"medium";
+      document.getElementById('lockvol').checked=(c.lockVolume!==false);
+      setCats(c.categories);
+      return;
+    }
+  }catch(e){}
+  ALARMS=[{id:"a1",label:"WAKE UP",time:"07:00",durationMin:40,enabled:true}];
+  document.getElementById('nq').value=3; document.getElementById('diff').value="medium";
+  document.getElementById('lockvol').checked=true; setCats(null);
+}
+function render(){
+  var h="";
+  for(var i=0;i<ALARMS.length;i++){
+    var a=ALARMS[i];
+    h+='<tr>'+
+      '<td><input type="checkbox" id="en'+i+'" '+(a.enabled?'checked':'')+' /></td>'+
+      '<td><input type="text" class="time" id="tm'+i+'" value="'+(a.time||"07:00")+'" maxlength="5" /></td>'+
+      '<td><input type="text" class="lbl" id="lb'+i+'" value="'+String(a.label||"").replace(/"/g,'')+'" maxlength="24" /></td>'+
+      '<td><input type="number" id="dm'+i+'" min="5" max="45" value="'+(a.durationMin||40)+'" style="width:80px" /></td>'+
+      '<td><button class="btn small x" onclick="delRow('+i+')">DEL</button></td>'+
+    '</tr>';
+  }
+  document.getElementById('rows').innerHTML=h;
+}
+function sync(){
+  for(var i=0;i<ALARMS.length;i++){
+    ALARMS[i].enabled=document.getElementById('en'+i).checked;
+    ALARMS[i].time=document.getElementById('tm'+i).value;
+    ALARMS[i].label=document.getElementById('lb'+i).value;
+    ALARMS[i].durationMin=parseInt(document.getElementById('dm'+i).value,10)||15;
+  }
+}
+function addRow(){ sync(); ALARMS.push({id:"a"+(ALARMS.length+1),label:"ALARM",time:"06:30",durationMin:40,enabled:true}); render(); }
+function delRow(i){ sync(); ALARMS.splice(i,1); render(); }
+
+function validTime(t){ return /^([01]?\d|2[0-3]):[0-5]\d$/.test(t); }
+function pad(t){ var m=t.match(/^(\d{1,2}):(\d{1,2})$/); if(!m) return t; var h=m[1]; if(h.length<2)h="0"+h; var mi=m[2]; if(mi.length<2)mi="0"+mi; return h+":"+mi; }
+
+function clean(s){ return String(s).replace(/\\/g,"").replace(/"/g,""); }
+function buildJson(){
+  var nq=parseInt(document.getElementById('nq').value,10)||3;
+  var diff=document.getElementById('diff').value;
+  var lock=document.getElementById('lockvol').checked;
+  function b(id){ return document.getElementById(id).checked?'true':'false'; }
+  var cats='"categories":{"arithmetic":'+b('cat_arithmetic')+',"derivatives":'+b('cat_derivatives')+',"vectors":'+b('cat_vectors')+',"matrices":'+b('cat_matrices')+',"capitals":'+b('cat_capitals')+'}';
+  var out='{\n  "version":1,\n  "numQuestions":'+nq+',\n  "difficulty":"'+diff+'",\n  "lockVolume":'+(lock?'true':'false')+',\n  '+cats+',\n  "soundFile":"alarm.mp3",\n  "alarms":[\n';
+  var items=[];
+  for(var i=0;i<ALARMS.length;i++){
+    var a=ALARMS[i]; var t=pad(a.time);
+    items.push('    {"id":"a'+(i+1)+'","label":"'+clean(a.label)+'","time":"'+t+'","durationMin":'+(parseInt(a.durationMin,10)||15)+',"enabled":'+(a.enabled?'true':'false')+'}');
+  }
+  out+=items.join(",\n")+'\n  ]\n}\n';
+  return out;
+}
+function saveConfig(){
+  var f=fso().CreateTextFile(ROOT+"\\config.json",true); f.Write(buildJson()); f.Close();
+}
+function term(t){ document.getElementById('term').innerHTML=t; }
+function showLog(){
+  try{ var p=ROOT+"\\arm.log"; if(fso().FileExists(p)){ var f=fso().OpenTextFile(p,1,false,0); var s=f.ReadAll(); f.Close(); term(s); } }catch(e){}
+}
+/* ---- Chinese self-destruct: scramble all text into Chinese, then vanish ---- */
+var VAN=[];
+function rcjk(){ return String.fromCharCode(0x4e00+Math.floor(Math.random()*0x5000)); }
+// choreography: ~4s scramble-to-Chinese -> hold 4s -> fade out -> run action ->
+// stay vanished 4s -> restore everything.
+function vanish(action, after){
+  var wrap=document.getElementById('wrap'); VAN=[];
+  var all=wrap.getElementsByTagName('*');
+  for(var i=0;i<all.length;i++){ var e=all[i];
+    if(e.children.length===0 && e.tagName!="INPUT" && e.tagName!="SELECT" && e.tagName!="CANVAS"){
+      var t=(e.innerText!=undefined?e.innerText:e.textContent);
+      if(t && /\S/.test(t)){ VAN.push({e:e,html:e.innerHTML,txt:t}); }
+    }
+  }
+  var steps=50, f=0;                                  // 50 * 80ms = 4s scramble
+  var iv=setInterval(function(){ f++;
+    var conv;
+    for(var i=0;i<VAN.length;i++){ var o=VAN[i], L=o.txt.length, s=""; conv=Math.floor(L*f/steps);
+      for(var j=0;j<L;j++){ s+= (j<conv)? rcjk() : o.txt.charAt(j); }   // flickering sweep
+      o.e.innerHTML=s;
+    }
+    if(f>=steps){ clearInterval(iv);
+      for(var i=0;i<VAN.length;i++){ var o=VAN[i],s=""; for(var j=0;j<o.txt.length;j++)s+=rcjk(); o.e.innerHTML=s; }
+      setTimeout(function(){ fadeOut(wrap, action, after); }, 4000);     // hold Chinese 4s
+    }
+  },80);
+}
+function fadeOut(wrap, action, after){
+  var op=1; var fv=setInterval(function(){ op-=0.08; wrap.style.opacity=(op>0?op:0);
+    if(op<=0){ clearInterval(fv); wrap.style.opacity=0;
+      if(action)action();
+      setTimeout(function(){ restoreIn(wrap, after); }, 4000);          // stay vanished 4s
+    } },45);
+}
+function restoreIn(wrap, after){
+  for(var i=0;i<VAN.length;i++){ VAN[i].e.innerHTML=VAN[i].html; }
+  var op=0; var fv=setInterval(function(){ op+=0.1; wrap.style.opacity=(op<1?op:1);
+    if(op>=1){ clearInterval(fv); if(after)after(); } },45);
+}
+
+function deploy(){
+  sync();
+  for(var i=0;i<ALARMS.length;i++){ if(ALARMS[i].enabled && !validTime(pad(ALARMS[i].time))){ alert("Bad time: '"+ALARMS[i].time+"'. Use 24h HH:MM, e.g. 06:30"); return; } }
+  saveConfig();
+  vanish(
+    function(){ try{ sh().Run('powershell -NoProfile -ExecutionPolicy Bypass -File "'+ROOT+'\\arm.ps1" -Root "'+ROOT+'"',0,true); }catch(e){} },
+    function(){ showLog(); }
+  );
+}
+function disarm(){
+  if(!confirm("Remove ALL armed alarms?")) return;
+  term("> disarming...");
+  try{ sh().Run('powershell -NoProfile -ExecutionPolicy Bypass -File "'+ROOT+'\\arm.ps1" -Root "'+ROOT+'" -Disarm',0,true); }catch(e){ term("> ERROR: "+e.message); return; }
+  showLog();
+}
+function testNow(){
+  sync(); saveConfig();
+  vanish(
+    function(){ try{ sh().Run('powershell -NoProfile -Sta -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+ROOT+'\\engine.ps1" -Label "TEST" -DurationMin 1',0,false); }catch(e){} },
+    function(){ term("> test launched. the gate will open. try to mute it. :)"); }
+  );
+}
+function stopRun(){
+  try{ var f=fso().CreateTextFile(ROOT+"\\PANIC",true); f.Write("stop"); f.Close(); }catch(e){}
+  term("> STOP signal sent. (a real armed alarm should be dismissed by solving the math!)");
+  setTimeout(function(){ try{ if(fso().FileExists(ROOT+"\\PANIC")) fso().DeleteFile(ROOT+"\\PANIC"); }catch(e){} }, 5000);
+}
+
+function boot(){
+  ROOT=findRoot();
+  // matrix rain
+  var c=document.getElementById('rain'); c.width=document.body.clientWidth; c.height=document.body.clientHeight;
+  var x=c.getContext('2d'); var fs=16, cols=Math.floor(c.width/fs), drops=[];
+  for(var i=0;i<cols;i++) drops[i]=Math.floor(Math.random()*(c.height/fs));
+  var chars="01234567890123456789ABCDEF<>{}[]/\\*-+=#";
+  setInterval(function(){
+    x.fillStyle="rgba(0,0,0,0.08)"; x.fillRect(0,0,c.width,c.height);
+    x.fillStyle="#00ff66"; x.font=fs+"px monospace";
+    for(var i=0;i<drops.length;i++){
+      x.fillText(chars.charAt(Math.floor(Math.random()*chars.length)),i*fs,drops[i]*fs);
+      if(drops[i]*fs>c.height && Math.random()>0.975) drops[i]=0;
+      drops[i]++;
+    }
+  },60);
+  setInterval(function(){ glitch(3,300); }, 7000+Math.floor(Math.random()*6000));
+  loadConfig(); render();
+  term("> root: "+ROOT+"\n> ready. add your alarms and hit DEPLOY.");
+}
+</script>
+</body>
+</html>
