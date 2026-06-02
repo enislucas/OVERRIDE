@@ -231,12 +231,14 @@ function restoreIn(wrap, after){
 }
 
 function deploy(){
+  if(window.OV_BUSY){ return; }      // prevent mashing -> concurrent schedulers pile up
   sync();
   for(var i=0;i<ALARMS.length;i++){ if(ALARMS[i].enabled && !validTime(pad(ALARMS[i].time))){ alert("Bad time: '"+ALARMS[i].time+"'. Use 24h HH:MM, e.g. 06:30"); return; } }
+  window.OV_BUSY=true;
   saveConfig();
   vanish(
     function(){ try{ sh().Run('powershell -NoProfile -ExecutionPolicy Bypass -File "'+ROOT+'\\arm.ps1" -Root "'+ROOT+'"',0,true); }catch(e){} },
-    function(){ showLog(); }
+    function(){ showLog(); window.OV_BUSY=false; }
   );
 }
 function disarm(){
@@ -246,10 +248,12 @@ function disarm(){
   showLog();
 }
 function testNow(){
+  if(window.OV_BUSY){ return; }
+  window.OV_BUSY=true;
   sync(); saveConfig();
   vanish(
     function(){ try{ sh().Run('powershell -NoProfile -Sta -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+ROOT+'\\engine.ps1" -Label "TEST" -DurationMin 1',0,false); }catch(e){} },
-    function(){ term("> test launched. the gate will open. try to mute it. :)"); }
+    function(){ term("> test launched. the gate will open. try to mute it. :)"); window.OV_BUSY=false; }
   );
 }
 function stopRun(){

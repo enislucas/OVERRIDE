@@ -6,6 +6,11 @@ param(
 # per enabled alarm (daily, wake-from-sleep capable). Called by the control panel.
 
 $ErrorActionPreference = "Stop"
+# single-instance lock: if another arm.ps1 is already registering, bail out so
+# concurrent runs can't pile up and hang the Task Scheduler service.
+$script:armMutex = New-Object System.Threading.Mutex($false, "Global\OVERRIDE_arm_lock")
+try { $gotLock = $script:armMutex.WaitOne(0) } catch { $gotLock = $true }
+if (-not $gotLock) { return }
 if ($Root -eq "") { $Root = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path } }
 $log = Join-Path $Root "arm.log"
 function W([string]$m) { $line = "{0:HH:mm:ss}  {1}" -f (Get-Date), $m; $line | Out-File -Append -Encoding ascii $log; $line }
