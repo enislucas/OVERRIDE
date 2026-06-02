@@ -47,13 +47,27 @@ foreach ($a in $cfg.alarms) {
     $at = [datetime]::ParseExact($a.time, "HH:mm", $null)
   } catch { W "BAD TIME '$($a.time)' for $($a.label) - skipped"; continue }
 
+  # optional date -> one-time trigger; blank -> daily recurring
+  $dateStr = ""
+  if (($a.PSObject.Properties.Name -contains 'date') -and $a.date) { $dateStr = ([string]$a.date).Trim() }
+
+  if ($dateStr -ne "") {
+    try { $when = [datetime]::ParseExact("$dateStr $($a.time)", "yyyy-MM-dd HH:mm", $null) }
+    catch { W "BAD DATE '$dateStr' for $($a.label) - skipped"; continue }
+    if ($when -le (Get-Date)) { W "skip (in the past): $($a.label) @ $dateStr $($a.time)"; continue }
+    $trigger = New-ScheduledTaskTrigger -Once -At $when
+    $whenDesc = "once on $dateStr at $($a.time)"
+  } else {
+    $trigger = New-ScheduledTaskTrigger -Daily -At $at
+    $whenDesc = "daily at $($a.time)"
+  }
+
   $argline = "-NoProfile -Sta -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Root\engine.ps1`" -AlarmId $($a.id)"
   $action = New-ScheduledTaskAction -Execute $pw -Argument $argline -WorkingDirectory $Root
-  $trigger = New-ScheduledTaskTrigger -Daily -At $at
   $settings = New-ScheduledTaskSettingsSet -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 45)
   $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
   Register-ScheduledTask -TaskName "$prefix$($a.id)" -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
   $count++
-  W "ARMED  $($a.label)  daily @ $($a.time)  (rings $($a.durationMin)m)"
+  W "ARMED  $($a.label)  $whenDesc  (rings $($a.durationMin)m)"
 }
 W "DONE. $count alarm(s) armed."

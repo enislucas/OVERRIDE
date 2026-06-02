@@ -5,6 +5,6 @@
   "lockVolume": true,
   "categories": {"arithmetic": true, "derivatives": false, "vectors": false, "matrices": false, "capitals": false},
   "alarms": [
-    { "id": "a1", "label": "WAKE UP", "time": "07:00", "durationMin": 40, "enabled": true }
+    { "id": "a1", "label": "WAKE UP", "time": "07:00", "date": "", "durationMin": 40, "enabled": true }
   ]
 }

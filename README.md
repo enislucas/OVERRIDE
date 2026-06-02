@@ -42,6 +42,9 @@ Open `OVERRIDE.hta` → **DISARM ALL**, then delete the folder.
 
 ## Tips
 - Leave the PC **on or asleep** (not shut down) so it can wake for the alarm.
+- **Date is optional**: leave it blank for a **daily** alarm, or set `YYYY-MM-DD` for a
+  **one-time** alarm on a specific future day (a flight, an exam, an appointment — days,
+  weeks, or months ahead). Past dates are ignored.
 - It ships with 10 synthesized rage-sounds in `sounds/` that **randomly cycle** (so your
   brain never habituates) and **escalate** the longer you ignore them. Drop your own
   **`.wav`** files in `sounds/` and they join the rotation (use prefixes `t1_`/`t2_`/`t3_`

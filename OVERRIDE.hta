@@ -51,10 +51,10 @@
   <div class="tag">An alarm you can't snooze your way out of. Set your times, hit DEPLOY, go to sleep.</div>
 
   <div class="card">
-    <h2>// ALARMS &nbsp; (24-hour time, e.g. 06:30)</h2>
+    <h2>// ALARMS &nbsp; (time = 24h e.g. 06:30 &middot; date optional: YYYY-MM-DD, blank = every day)</h2>
     <table>
-      <thead><tr><th style="width:50px">ON</th><th style="width:110px">TIME</th><th>LABEL</th>
-      <th style="width:130px">GIVE UP (min)</th><th style="width:60px"></th></tr></thead>
+      <thead><tr><th style="width:50px">ON</th><th style="width:90px">TIME</th><th style="width:150px">DATE</th><th>LABEL</th>
+      <th style="width:120px">GIVE UP (min)</th><th style="width:60px"></th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
     <button class="btn small" onclick="addRow()">+ ADD ALARM</button>
@@ -146,6 +146,7 @@ function render(){
     h+='<tr>'+
       '<td><input type="checkbox" id="en'+i+'" '+(a.enabled?'checked':'')+' /></td>'+
       '<td><input type="text" class="time" id="tm'+i+'" value="'+(a.time||"07:00")+'" maxlength="5" /></td>'+
+      '<td><input type="text" id="dt'+i+'" value="'+(a.date||"")+'" placeholder="YYYY-MM-DD" maxlength="10" style="width:140px" /></td>'+
       '<td><input type="text" class="lbl" id="lb'+i+'" value="'+String(a.label||"").replace(/"/g,'')+'" maxlength="24" /></td>'+
       '<td><input type="number" id="dm'+i+'" min="5" max="45" value="'+(a.durationMin||40)+'" style="width:80px" /></td>'+
       '<td><button class="btn small x" onclick="delRow('+i+')">DEL</button></td>'+
@@ -157,14 +158,16 @@ function sync(){
   for(var i=0;i<ALARMS.length;i++){
     ALARMS[i].enabled=document.getElementById('en'+i).checked;
     ALARMS[i].time=document.getElementById('tm'+i).value;
+    ALARMS[i].date=document.getElementById('dt'+i).value;
     ALARMS[i].label=document.getElementById('lb'+i).value;
-    ALARMS[i].durationMin=parseInt(document.getElementById('dm'+i).value,10)||15;
+    ALARMS[i].durationMin=parseInt(document.getElementById('dm'+i).value,10)||40;
   }
 }
-function addRow(){ sync(); ALARMS.push({id:"a"+(ALARMS.length+1),label:"ALARM",time:"06:30",durationMin:40,enabled:true}); render(); }
+function addRow(){ sync(); ALARMS.push({id:"a"+(ALARMS.length+1),label:"ALARM",time:"06:30",date:"",durationMin:40,enabled:true}); render(); }
 function delRow(i){ sync(); ALARMS.splice(i,1); render(); }
 
 function validTime(t){ return /^([01]?\d|2[0-3]):[0-5]\d$/.test(t); }
+function validDate(d){ if(!d || !/\S/.test(d))return true; var m=String(d).match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m)return false; var mo=+m[2],dy=+m[3]; return mo>=1&&mo<=12&&dy>=1&&dy<=31; }
 function pad(t){ var m=t.match(/^(\d{1,2}):(\d{1,2})$/); if(!m) return t; var h=m[1]; if(h.length<2)h="0"+h; var mi=m[2]; if(mi.length<2)mi="0"+mi; return h+":"+mi; }
 
 function clean(s){ return String(s).replace(/\\/g,"").replace(/"/g,""); }
@@ -178,7 +181,7 @@ function buildJson(){
   var items=[];
   for(var i=0;i<ALARMS.length;i++){
     var a=ALARMS[i]; var t=pad(a.time);
-    items.push('    {"id":"a'+(i+1)+'","label":"'+clean(a.label)+'","time":"'+t+'","durationMin":'+(parseInt(a.durationMin,10)||15)+',"enabled":'+(a.enabled?'true':'false')+'}');
+    items.push('    {"id":"a'+(i+1)+'","label":"'+clean(a.label)+'","time":"'+t+'","date":"'+clean(a.date||"")+'","durationMin":'+(parseInt(a.durationMin,10)||40)+',"enabled":'+(a.enabled?'true':'false')+'}');
   }
   out+=items.join(",\n")+'\n  ]\n}\n';
   return out;
@@ -233,7 +236,10 @@ function restoreIn(wrap, after){
 function deploy(){
   if(window.OV_BUSY){ return; }      // prevent mashing -> concurrent schedulers pile up
   sync();
-  for(var i=0;i<ALARMS.length;i++){ if(ALARMS[i].enabled && !validTime(pad(ALARMS[i].time))){ alert("Bad time: '"+ALARMS[i].time+"'. Use 24h HH:MM, e.g. 06:30"); return; } }
+  for(var i=0;i<ALARMS.length;i++){ var A=ALARMS[i]; if(!A.enabled)continue;
+    if(!validTime(pad(A.time))){ alert("Bad time: '"+A.time+"'. Use 24h HH:MM, e.g. 06:30"); return; }
+    if(!validDate(A.date)){ alert("Bad date: '"+A.date+"'. Use YYYY-MM-DD, or leave blank for a daily alarm."); return; }
+  }
   window.OV_BUSY=true;
   saveConfig();
   vanish(
