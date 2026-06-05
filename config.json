@@ -1,10 +1,11 @@
 {
-  "version": 1,
-  "numQuestions": 3,
-  "difficulty": "medium",
-  "lockVolume": true,
-  "categories": {"arithmetic": true, "derivatives": false, "vectors": false, "matrices": false, "capitals": false},
-  "alarms": [
-    { "id": "a1", "label": "WAKE UP", "time": "07:00", "date": "", "durationMin": 40, "enabled": true }
+  "version":1,
+  "numQuestions":1,
+  "difficulty":"easy",
+  "lockVolume":true,
+  "categories":{"arithmetic":true,"derivatives":false,"vectors":false,"matrices":false,"capitals":false},
+  "soundFile":"alarm.mp3",
+  "alarms":[
+    {"id":"a1","label":"WAKE UP","time":"03:43","date":"2026-06-07","durationMin":40,"enabled":true}
   ]
 }

@@ -70,6 +70,8 @@ Open `OVERRIDE.hta` → **DISARM ALL**, then delete the folder.
 - `engine.ps1` and `watchdog.ps1` **guard each other** — kill one and the other relaunches
   it. Both stop the instant the quiz writes the session key to `UNLOCK`, the deadline passes,
   or a `PANIC` file appears.
+- The math-gate window (`wake_quiz.hta`) **self-closes** when the engine's heartbeat stops,
+  so quiz windows can never pile up across repeated DEPLOY/TEST presses.
 - **The single-instance locks are intentional — please don't remove them.** `OVERRIDE.hta`
   ignores repeated DEPLOY/TEST clicks while one is in progress (`OV_BUSY`); and `arm.ps1`,
   `engine.ps1`, and `watchdog.ps1` each take a per-session mutex (`Local\OVERRIDE_*_lock`)

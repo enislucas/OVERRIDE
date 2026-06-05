@@ -221,4 +221,5 @@ StopSnd
 if ((Test-Unlocked) -and $voice) {
   try { $voice.SpeakSsml("<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'><prosody pitch='low' rate='medium'>$($congrats | Get-Random)</prosody></speak>") } catch { try { $voice.Speak(($congrats | Get-Random)) } catch {} }
 }
-foreach ($p in $players.Values) { try { $p.Close() } catch {} }
+Remove-Item $P_beat -ErrorAction SilentlyContinue   # heartbeat gone -> any open quiz window self-closes
+try { if ($script:sp) { $script:sp.Dispose() } } catch {}
