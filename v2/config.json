@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "numQuestions": 3,
+  "difficulty": "hard",
+  "categories": { "arithmetic": true },
+  "lockVolume": true,
+  "answerWindowSec": 180,
+  "alarms": [
+    { "id": "a1", "label": "WAKE UP", "time": "03:30", "date": "2026-06-08", "enabled": true },
+    { "id": "a2", "label": "WAKE UP", "time": "03:42", "date": "2026-06-08", "enabled": true },
+    { "id": "a3", "label": "WAKE UP", "time": "04:25", "date": "2026-06-08", "enabled": true }
+  ]
+}
