@@ -336,7 +336,7 @@ function Show-Ring {
   $script:rg_grant = {
     $script:rg_solved = $true; $script:rg_allowClose = $true
     try { $script:rg_player.Stop() } catch {}
-    try { $script:rg_mainTimer.Stop(); $script:rg_sndTimer.Stop() } catch {}
+    try { $script:rg_mainTimer.Stop(); $script:rg_sndTimer.Stop(); $script:rg_volTimer.Stop() } catch {}
     $script:rg_h1.Text = ([char]0x2713 + " ACCESS GRANTED"); $script:rg_h1.ForeColor = [System.Drawing.Color]::FromArgb(0,255,136)
     $script:rg_msg.ForeColor = [System.Drawing.Color]::FromArgb(124,255,176); $script:rg_msg.Text = "Alarm disabled. You beat the machine. Go win the day."
     $script:rg_closeTimer = New-Object System.Windows.Forms.Timer; $script:rg_closeTimer.Interval = 2500
@@ -357,7 +357,7 @@ function Show-Ring {
   $script:rg_form.Add_FormClosing({ param($s,$e) if (-not $script:rg_allowClose) { $e.Cancel = $true } })
   if ($TestMode) {
     $script:rg_form.Add_KeyDown({ param($s,$e)
-      if ($e.KeyCode -eq 'Escape') { $script:rg_allowClose = $true; try { $script:rg_mainTimer.Stop(); $script:rg_sndTimer.Stop() } catch {}; try { $script:rg_player.Stop() } catch {}; try { $script:rg_form.Close() } catch {} }
+      if ($e.KeyCode -eq 'Escape') { $script:rg_allowClose = $true; try { $script:rg_mainTimer.Stop(); $script:rg_sndTimer.Stop(); $script:rg_volTimer.Stop() } catch {}; try { $script:rg_player.Stop() } catch {}; try { $script:rg_form.Close() } catch {} }
     })
   }
 
@@ -377,10 +377,13 @@ function Show-Ring {
     if (($script:rg_elapsed -ge $script:rg_windowSec) -and (-not $script:rg_solved)) {
       $script:rg_allowClose = $true
       try { $script:rg_player.Stop() } catch {}
-      try { $script:rg_mainTimer.Stop(); $script:rg_sndTimer.Stop() } catch {}
+      try { $script:rg_mainTimer.Stop(); $script:rg_sndTimer.Stop(); $script:rg_volTimer.Stop() } catch {}
       try { $script:rg_form.Close() } catch {}
     }
   })
+  # aggressive volume lock: re-assert 100% + unmute ~5x/sec so a manual mute can't stick (cheap COM call)
+  $script:rg_volTimer = New-Object System.Windows.Forms.Timer; $script:rg_volTimer.Interval = 200
+  $script:rg_volTimer.Add_Tick({ if ($script:rg_lockVol) { try { [Vol]::Force() } catch {} } })
   $script:rg_sndTimer = New-Object System.Windows.Forms.Timer; $script:rg_sndTimer.Interval = 4000
   $script:rg_sndTimer.Add_Tick({
     if (-not $script:rg_haveSnd) { return }
@@ -397,7 +400,7 @@ function Show-Ring {
     if ($script:rg_lockVol) { try { [Vol]::Force() } catch {} }
     if ($script:rg_haveSnd) { $arr = @($script:rg_tierA); if ($arr.Count -gt 0) { $p = $arr | Get-Random; try { $script:rg_player.SoundLocation = $p; $script:rg_player.Load(); $script:rg_player.PlayLooping() } catch {} } }
     if ($script:rg_voice) { try { [void]$script:rg_voice.SpeakAsync("Wake up. Solve to disable the alarm.") } catch {} }
-    $script:rg_rain.Timer.Start(); $script:rg_mainTimer.Start(); $script:rg_sndTimer.Start()
+    $script:rg_rain.Timer.Start(); $script:rg_mainTimer.Start(); $script:rg_sndTimer.Start(); $script:rg_volTimer.Start()
     try { $script:rg_rows[0].Box.Focus() } catch {}
   })
 
@@ -409,6 +412,7 @@ function Show-Ring {
     try { $st = $script:rg_rain.Panel.Tag; if ($st) { foreach ($kk in 'bmp','scan','font','fade','body') { if ($st[$kk]) { $st[$kk].Dispose() } } } } catch {}
     try { $script:rg_mainTimer.Stop(); $script:rg_mainTimer.Dispose() } catch {}
     try { $script:rg_sndTimer.Stop(); $script:rg_sndTimer.Dispose() } catch {}
+    try { $script:rg_volTimer.Stop(); $script:rg_volTimer.Dispose() } catch {}
     try { if ($script:rg_shakeTimer) { $script:rg_shakeTimer.Stop(); $script:rg_shakeTimer.Dispose() } } catch {}
     try { if ($script:rg_closeTimer) { $script:rg_closeTimer.Dispose() } } catch {}
     try { $script:rg_player.Stop(); $script:rg_player.Dispose() } catch {}

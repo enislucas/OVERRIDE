@@ -215,7 +215,7 @@ function Show-Ring {
   $script:grant = {
     $script:solved = $true; $script:allowClose = $true
     try { $script:player.Stop() } catch {}
-    try { $script:mainTimer.Stop(); $script:sndTimer.Stop() } catch {}
+    try { $script:mainTimer.Stop(); $script:sndTimer.Stop(); $script:volTimer.Stop() } catch {}
     $script:h1.Text = ([char]0x2713 + " ACCESS GRANTED")
     $script:h1.ForeColor = [System.Drawing.Color]::FromArgb(0,255,136)
     $script:msg.ForeColor = [System.Drawing.Color]::FromArgb(124,255,176)
@@ -245,7 +245,7 @@ function Show-Ring {
     $script:form.Add_KeyDown({ param($s,$e)
       if ($e.KeyCode -eq 'Escape') {
         $script:allowClose = $true
-        try { $script:mainTimer.Stop(); $script:sndTimer.Stop() } catch {}
+        try { $script:mainTimer.Stop(); $script:sndTimer.Stop(); $script:volTimer.Stop() } catch {}
         try { $script:player.Stop() } catch {}
         try { $script:form.Close() } catch {}
       }
@@ -269,10 +269,16 @@ function Show-Ring {
     if (($script:elapsed -ge $script:windowSec) -and (-not $script:solved)) {
       $script:allowClose = $true
       try { $script:player.Stop() } catch {}
-      try { $script:mainTimer.Stop(); $script:sndTimer.Stop() } catch {}
+      try { $script:mainTimer.Stop(); $script:sndTimer.Stop(); $script:volTimer.Stop() } catch {}
       try { $script:form.Close() } catch {}
     }
   })
+
+  # aggressive volume lock: re-assert 100% + unmute ~5x/sec so a manual mute can't stick
+  # (one cheap COM call per tick; negligible CPU, no fan impact)
+  $script:volTimer = New-Object System.Windows.Forms.Timer
+  $script:volTimer.Interval = 200
+  $script:volTimer.Add_Tick({ if ($script:lockVol) { try { [Vol]::Force() } catch {} } })
 
   $script:sndTimer = New-Object System.Windows.Forms.Timer
   $script:sndTimer.Interval = 4000
@@ -293,7 +299,7 @@ function Show-Ring {
       if ($arr.Count -gt 0) { $p = $arr | Get-Random; try { $script:player.SoundLocation = $p; $script:player.Load(); $script:player.PlayLooping() } catch {} }
     }
     if ($script:voice) { try { [void]$script:voice.SpeakAsync("Wake up. Solve to disable the alarm.") } catch {} }
-    $script:mainTimer.Start(); $script:sndTimer.Start()
+    $script:mainTimer.Start(); $script:sndTimer.Start(); $script:volTimer.Start()
     try { $script:rows[0].Box.Focus() } catch {}
   })
 
@@ -301,6 +307,7 @@ function Show-Ring {
 
   try { $script:mainTimer.Stop(); $script:mainTimer.Dispose() } catch {}
   try { $script:sndTimer.Stop(); $script:sndTimer.Dispose() } catch {}
+  try { $script:volTimer.Stop(); $script:volTimer.Dispose() } catch {}
   try { if ($script:closeTimer) { $script:closeTimer.Dispose() } } catch {}
   try { $script:player.Stop(); $script:player.Dispose() } catch {}
   try { if ($script:voice) { $script:voice.Dispose() } } catch {}
