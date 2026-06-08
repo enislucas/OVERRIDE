@@ -98,34 +98,12 @@ using System; using System.Runtime.InteropServices;
 public static class Win {
   [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int cx, int cy, uint f);
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
-  [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int n);
-  [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
-  [DllImport("user32.dll")] static extern bool AttachThreadInput(uint a, uint b, bool f);
-  [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
-  [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
   static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
-  public static void Pin(IntPtr h, int x, int y, int w, int hh) {   // once: bring up + take foreground
-    if (h == IntPtr.Zero) return;
-    ShowWindow(h, 5);                                       // SW_SHOW
-    SetWindowPos(h, HWND_TOPMOST, x, y, w, hh, 0x0040);     // SWP_SHOWWINDOW
-    SetForegroundWindow(h);
-  }
-  public static void Top(IntPtr h, int x, int y, int w, int hh) {   // maintain: topmost + position only, NO focus-steal
-    if (h == IntPtr.Zero) return;
-    SetWindowPos(h, HWND_TOPMOST, x, y, w, hh, 0x0040);
-  }
-  public static bool IsForeground(IntPtr h){ return GetForegroundWindow() == h; }
-  public static void Force(IntPtr h, int x, int y, int w, int hh){   // reliably bring h ON TOP + focused over the current foreground app (e.g. Edge)
-    if (h == IntPtr.Zero) return;
-    ShowWindow(h, 5);
-    SetWindowPos(h, HWND_TOPMOST, x, y, w, hh, 0x0040);
-    uint pid; uint fg = GetWindowThreadProcessId(GetForegroundWindow(), out pid);
-    uint cur = GetCurrentThreadId();
-    if (fg != cur) AttachThreadInput(cur, fg, true);
-    BringWindowToTop(h); SetForegroundWindow(h);
-    if (fg != cur) AttachThreadInput(cur, fg, false);
-  }
+  const uint GENTLE = 0x0001 | 0x0002 | 0x0010;   // SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
+  // z-order nudge ONLY: never moves/resizes the window and never steals focus -> no fullscreen-black, no input hang
+  public static void TopMost(IntPtr h){ if (h == IntPtr.Zero) return; SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, GENTLE); }
+  // once when the quiz appears: topmost + a SINGLE soft focus nudge (no resize, no AttachThreadInput, no retry loop)
+  public static void Raise(IntPtr h){ if (h == IntPtr.Zero) return; SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, GENTLE); SetForegroundWindow(h); }
 }
 "@
 try { Add-Type -TypeDefinition $winSrc -Language CSharp } catch {}
@@ -211,9 +189,8 @@ function Ring-Tick {
     try {
       $script:rg_mshta.Refresh(); $h = $script:rg_mshta.MainWindowHandle
       if ($h -ne [IntPtr]::Zero) {
-        if ($h -ne $script:rg_pinnedH) { $script:rg_pinnedH = $h; $script:rg_fgTries = 0 }
-        if ($script:rg_fgTries -lt 10 -and -not [Win]::IsForeground($h)) { [Win]::Force($h, 0, 0, $script:rg_sw, $script:rg_sh); $script:rg_fgTries++ }  # keep pulling it on top+focus until it wins (first ~5s)
-        elseif (($script:rg_tk % 6) -eq 0) { [Win]::Top($h, 0, 0, $script:rg_sw, $script:rg_sh) }                                                        # then just hold topmost, no focus-steal -> no freeze
+        if ($h -ne $script:rg_pinnedH) { [Win]::Raise($h); $script:rg_pinnedH = $h }   # once: gentle topmost + single soft focus nudge
+        elseif (($script:rg_tk % 4) -eq 0) { [Win]::TopMost($h) }                       # then z-order nudge only (~2s) -> never blacks the screen or hangs input
       }
     } catch {}
   }
