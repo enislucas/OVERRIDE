@@ -1,7 +1,7 @@
 param(
   [switch]$Ring, [string]$AlarmId = "", [switch]$TestNow,
   [switch]$Arm, [switch]$Disarm, [switch]$Unlock,
-  [switch]$DryRun, [switch]$Probe, [int]$PanelTestSec = 0
+  [switch]$DryRun, [switch]$Probe, [int]$PanelTestSec = 0, [switch]$AutoDeploy
 )
 # OVERRIDE v2 (clean) // WAKE PROTOCOL
 # - Alarms fire via Windows Scheduled Tasks -> ephemeral ring process. 0 CPU between alarms.
@@ -588,6 +588,7 @@ function Show-PanelGui {
     Panel-LoadEditor $null; Panel-RenderRows; Panel-RefreshArmed; Panel-UpdateStatus; Panel-Reposition
     $script:pn_rain.Timer.Start(); $script:pn_statusTimer.Start()
     if ($script:pn_testSec -gt 0) { $script:pn_auto = New-Object System.Windows.Forms.Timer; $script:pn_auto.Interval = ($script:pn_testSec*1000); $script:pn_auto.Add_Tick({ $script:pn_auto.Stop(); $script:pn_form.Close() }); $script:pn_auto.Start() }
+    if ($script:pn_autoDeploy) { $script:pn_dt = New-Object System.Windows.Forms.Timer; $script:pn_dt.Interval = 1500; $script:pn_dt.Add_Tick({ $script:pn_dt.Stop(); Panel-Deploy }); $script:pn_dt.Start() }
   })
 
   try { [void]$script:pn_form.ShowDialog() }
@@ -620,4 +621,5 @@ if ($Ring) {
 
 # default: the standalone control panel
 $script:pn_testSec = $PanelTestSec
+$script:pn_autoDeploy = $AutoDeploy
 Show-PanelGui
