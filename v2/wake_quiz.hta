@@ -94,7 +94,7 @@
   </div>
 
 <script type="text/javascript">
-var ROOT="", KEY="", LABEL="SYSTEM", N=3, DIFF="medium", CATS=["arithmetic"], Q=[];
+var ROOT="", KEY="", LABEL="SYSTEM", N=3, DIFF="medium", CATS=["arithmetic"], Q=[], RAIN=false;
 
 function fso(){ return new ActiveXObject("Scripting.FileSystemObject"); }
 function trim(s){ return String(s).replace(/^\s+|\s+$/g,""); }
@@ -232,7 +232,7 @@ function check(){
   }
   if(ok){ grant(); }
   else { document.getElementById('msg').innerHTML='<span class="bad">&gt; ACCESS DENIED &mdash; recompute. WAKE UP.</span>';
-         glitch(11,650); if(rnd(0,1)==0) showErr(); gen(); }
+         if(RAIN)glitch(11,650); if(rnd(0,1)==0) showErr(); gen(); }
 }
 function grant(){
   try{ var f=fso().CreateTextFile(ROOT+"\\UNLOCK",true); f.Write(KEY); f.Close(); }catch(e){}
@@ -292,6 +292,7 @@ function loadConfig(){
     if(c.numQuestions)N=parseInt(c.numQuestions,10);
     if(c.difficulty)DIFF=String(c.difficulty);
     if(c.categories){ var arr=[]; for(var k in c.categories){ if(c.categories[k])arr.push(k); } if(arr.length)CATS=arr; }
+    if(c.matrixRain)RAIN=true;
   }catch(e){} }
 }
 function boot(){
@@ -301,19 +302,20 @@ function boot(){
   var lb=trim(readFile(ROOT+"\\session.label")); if(lb){ LABEL=lb; }
   try{ document.getElementById('lbl').innerHTML=LABEL; }catch(e){}
   loadConfig();
-  // matrix rain
-  var c=document.getElementById('rain'); c.width=document.body.clientWidth; c.height=document.body.clientHeight;
-  var x=c.getContext('2d'); var fs=16, cols=Math.floor(c.width/fs), drops=[];
-  for(var i=0;i<cols;i++) drops[i]=Math.floor(Math.random()*(c.height/fs));
-  var chars="01234567890123456789ABCDEFXYZ<>/\\*-+=#%";
-  setInterval(function(){
-    x.fillStyle="rgba(0,0,0,0.08)"; x.fillRect(0,0,c.width,c.height);
-    x.fillStyle="#00ff66"; x.font=fs+"px monospace";
-    for(var i=0;i<drops.length;i++){ x.fillText(chars.charAt(Math.floor(Math.random()*chars.length)),i*fs,drops[i]*fs);
-      if(drops[i]*fs>c.height && Math.random()>0.975) drops[i]=0; drops[i]++; }
-  },80);
-  // ambient glitch every 6-13s
-  setInterval(function(){ glitch(4,320); }, 6000+Math.floor(Math.random()*7000));
+  // matrix rain + ambient glitch: ONLY when explicitly enabled (off by default = lite / low-CPU)
+  if(RAIN){
+    var c=document.getElementById('rain'); c.width=document.body.clientWidth; c.height=document.body.clientHeight;
+    var x=c.getContext('2d'); var fs=16, cols=Math.floor(c.width/fs), drops=[];
+    for(var i=0;i<cols;i++) drops[i]=Math.floor(Math.random()*(c.height/fs));
+    var chars="01234567890123456789ABCDEFXYZ<>/\\*-+=#%";
+    setInterval(function(){
+      x.fillStyle="rgba(0,0,0,0.08)"; x.fillRect(0,0,c.width,c.height);
+      x.fillStyle="#00ff66"; x.font=fs+"px monospace";
+      for(var i=0;i<drops.length;i++){ x.fillText(chars.charAt(Math.floor(Math.random()*chars.length)),i*fs,drops[i]*fs);
+        if(drops[i]*fs>c.height && Math.random()>0.975) drops[i]=0; drops[i]++; }
+    },80);
+    setInterval(function(){ glitch(4,320); }, 6000+Math.floor(Math.random()*7000));
+  }
   // self-close when the alarm engine stops, so windows never pile up
   setInterval(watchEngine, 1500);
   gen();

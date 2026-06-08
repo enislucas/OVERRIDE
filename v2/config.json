@@ -1,19 +1,12 @@
-﻿{
-    "version":  3,
-    "defaults":  {
-                     "difficulty":  "hard",
-                     "numQuestions":  3,
-                     "durationMin":  3,
-                     "lockVolume":  true,
-                     "categories":  {
-                                        "arithmetic":  true,
-                                        "derivatives":  false,
-                                        "vectors":  false,
-                                        "matrices":  false,
-                                        "capitals":  false
-                                    }
-                 },
-    "alarms":  [
-
-               ]
+{
+  "version": 3,
+  "defaults": {
+    "difficulty": "hard",
+    "numQuestions": 3,
+    "durationMin": 3,
+    "lockVolume": true,
+    "matrixRain": false,
+    "categories": { "arithmetic": true, "derivatives": false, "vectors": false, "matrices": false, "capitals": false }
+  },
+  "alarms": []
 }

@@ -130,26 +130,29 @@ function Convert-Cats($catObj) {
 function Get-AlarmSettings($id) {
   Load-Config
   $d = $script:cfg.defaults
+  $mrDef = $false; if ($d.PSObject.Properties.Name -contains 'matrixRain') { $mrDef = [bool]$d.matrixRain }
   $a = $script:cfg.alarms | Where-Object { $_.id -eq $id } | Select-Object -First 1
-  if (-not $a) { return @{ Label='WAKE UP'; Diff=[string]$d.difficulty; NumQ=[int]$d.numQuestions; Cats=(Convert-Cats $d.categories); DurationSec=([int]$d.durationMin*60); LockVol=[bool]$d.lockVolume; Lockdown=$true; Relaunch=$true } }
+  if (-not $a) { return @{ Label='WAKE UP'; Diff=[string]$d.difficulty; NumQ=[int]$d.numQuestions; Cats=(Convert-Cats $d.categories); DurationSec=([int]$d.durationMin*60); LockVol=[bool]$d.lockVolume; MatrixRain=$mrDef; Lockdown=$true; Relaunch=$true } }
   $diff = if ($a.PSObject.Properties.Name -contains 'difficulty') { [string]$a.difficulty } else { [string]$d.difficulty }
   $nq   = if ($a.PSObject.Properties.Name -contains 'numQuestions') { [int]$a.numQuestions } else { [int]$d.numQuestions }
   $dur  = if ($a.PSObject.Properties.Name -contains 'durationMin') { [int]$a.durationMin } else { [int]$d.durationMin }
   $lv   = if ($a.PSObject.Properties.Name -contains 'lockVolume') { [bool]$a.lockVolume } else { [bool]$d.lockVolume }
   $cats = if ($a.PSObject.Properties.Name -contains 'categories') { Convert-Cats $a.categories } else { Convert-Cats $d.categories }
   if ($dur -lt 1) { $dur = 1 }
-  return @{ Label=[string]$a.label; Diff=$diff; NumQ=$nq; Cats=$cats; DurationSec=($dur*60); LockVol=$lv; Lockdown=$true; Relaunch=$true }
+  $mr = $mrDef; if ($a.PSObject.Properties.Name -contains 'matrixRain') { $mr = [bool]$a.matrixRain }
+  return @{ Label=[string]$a.label; Diff=$diff; NumQ=$nq; Cats=$cats; DurationSec=($dur*60); LockVol=$lv; MatrixRain=$mr; Lockdown=$true; Relaunch=$true }
 }
 function Get-TestSettings {
   $p = Join-Path $script:root 'session.testcfg'
-  $diff='hard'; $nq=3; $cats=(Convert-Cats $script:cfg.defaults.categories); $dur=45; $lv=$true
+  $diff='hard'; $nq=3; $cats=(Convert-Cats $script:cfg.defaults.categories); $dur=45; $lv=$true; $mr=$false
   if (Test-Path $p) { try { $t = Get-Content $p -Raw | ConvertFrom-Json
     if ($t.difficulty) { $diff=[string]$t.difficulty }
     if ($t.numQuestions) { $nq=[int]$t.numQuestions }
     if ($t.categories) { $cats=Convert-Cats $t.categories }
     if ($t.PSObject.Properties.Name -contains 'lockVolume') { $lv=[bool]$t.lockVolume }
+    if ($t.PSObject.Properties.Name -contains 'matrixRain') { $mr=[bool]$t.matrixRain }
   } catch {} }
-  return @{ Label='TEST'; Diff=$diff; NumQ=$nq; Cats=$cats; DurationSec=$dur; LockVol=$lv; Lockdown=$false; Relaunch=$false }
+  return @{ Label='TEST'; Diff=$diff; NumQ=$nq; Cats=$cats; DurationSec=$dur; LockVol=$lv; MatrixRain=$mr; Lockdown=$false; Relaunch=$false }
 }
 
 # ---- the ring engine -------------------------------------------------------
@@ -208,7 +211,7 @@ function Run-Ring {
   Set-Content -Path (Join-Path $script:root 'session.deadline') -Value ($script:rg_deadline.ToString('o')) -Encoding ASCII
   Set-Content -Path (Join-Path $script:root 'session.start')    -Value ($start.ToString('o')) -Encoding ASCII
   Set-Content -Path (Join-Path $script:root 'session.label')    -Value $S.Label -Encoding ASCII
-  $qc = [ordered]@{ numQuestions = $S.NumQ; difficulty = $S.Diff; categories = $S.Cats }
+  $qc = [ordered]@{ numQuestions = $S.NumQ; difficulty = $S.Diff; categories = $S.Cats; matrixRain = $S.MatrixRain }
   ($qc | ConvertTo-Json -Compress) | Set-Content -Path (Join-Path $script:root 'session.quizcfg') -Encoding ASCII
 
   $script:rg_relaunch = $S.Relaunch; $script:rg_lockdown = $S.Lockdown; $script:rg_lockVol = $S.LockVol
@@ -526,6 +529,7 @@ function Panel-Deploy {
 function Show-PanelGui {
   if (-not (Test-RingActive)) { Set-TaskMgrDisabled $false }
   Panel-LoadAlarms
+  $script:pn_mr = $false; if ($script:cfg.defaults.PSObject.Properties.Name -contains 'matrixRain') { $script:pn_mr = [bool]$script:cfg.defaults.matrixRain }
   $green=[System.Drawing.Color]::FromArgb(0,255,102); $dim=[System.Drawing.Color]::FromArgb(124,255,176); $boxBg=[System.Drawing.Color]::FromArgb(0,26,10)
   $fL=New-Object System.Drawing.Font('Consolas',10); $fLb=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold)
 
@@ -591,12 +595,12 @@ function Show-PanelGui {
   $hint = New-Object System.Windows.Forms.Label; $hint.Text="blank date = next occurrence  |  Rhythm = every day  |  each alarm has its own subjects/difficulty  |  0% CPU between alarms"; $hint.Left=24; $hint.Top=654; $hint.Width=956; $hint.Height=20; $hint.ForeColor=[System.Drawing.Color]::FromArgb(70,130,95); $hint.BackColor=[System.Drawing.Color]::Transparent; $hint.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($hint)
 
   $script:pn_statusTimer = New-Object System.Windows.Forms.Timer; $script:pn_statusTimer.Interval = 1000; $script:pn_statusTimer.Add_Tick({ Panel-UpdateStatus; $script:pn_tick++; if (($script:pn_tick % 11) -eq 0) { Panel-Glitch } })
-  $script:pn_form.Add_Activated({ try { if ($script:pn_form.WindowState -ne 'Minimized') { $script:pn_rain.Timer.Start() } } catch {} })
+  $script:pn_form.Add_Activated({ try { if ($script:pn_mr -and $script:pn_form.WindowState -ne 'Minimized') { $script:pn_rain.Timer.Start() } } catch {} })
   $script:pn_form.Add_Deactivate({ try { $script:pn_rain.Timer.Stop() } catch {} })
-  $script:pn_form.Add_Resize({ Panel-Reposition; try { if ($script:pn_form.WindowState -eq 'Minimized') { $script:pn_rain.Timer.Stop() } else { $script:pn_rain.Timer.Start() } } catch {} })
+  $script:pn_form.Add_Resize({ Panel-Reposition; try { if ($script:pn_form.WindowState -eq 'Minimized') { $script:pn_rain.Timer.Stop() } elseif ($script:pn_mr) { $script:pn_rain.Timer.Start() } } catch {} })
   $script:pn_form.Add_Shown({
     Panel-LoadEditor $null; Panel-RenderRows; Panel-RefreshArmed; Panel-UpdateStatus; Panel-Reposition
-    $script:pn_rain.Timer.Start(); $script:pn_statusTimer.Start()
+    if ($script:pn_mr) { $script:pn_rain.Timer.Start() }; $script:pn_statusTimer.Start()
     if ($script:pn_testSec -gt 0) { $script:pn_auto = New-Object System.Windows.Forms.Timer; $script:pn_auto.Interval = ($script:pn_testSec*1000); $script:pn_auto.Add_Tick({ $script:pn_auto.Stop(); $script:pn_form.Close() }); $script:pn_auto.Start() }
     if ($script:pn_autoDeploy) { $script:pn_dt = New-Object System.Windows.Forms.Timer; $script:pn_dt.Interval = 1500; $script:pn_dt.Add_Tick({ $script:pn_dt.Stop(); Panel-Deploy }); $script:pn_dt.Start() }
   })
