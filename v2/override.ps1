@@ -196,7 +196,6 @@ function Run-Ring {
   param([hashtable]$S)
   $script:rg_exiting = $false
   # session files
-  $p = { param($n) Join-Path $script:root $n }
   foreach ($f in 'UNLOCK','PANIC','session.beat') { $q = Join-Path $script:root $f; if (Test-Path $q) { try { [System.IO.File]::Delete($q) } catch {} } }
   $key = [guid]::NewGuid().ToString('N')
   $start = Get-Date; $script:rg_deadline = $start.AddSeconds($S.DurationSec); $script:rg_key = $key
@@ -392,7 +391,7 @@ function Panel-RenderRows {
   foreach ($al in $script:pn_alarms) {
     $row = New-Object System.Windows.Forms.Panel; $row.Width=980; $row.Height=34; $row.Left=2; $row.Top=$y; $row.BackColor=[System.Drawing.Color]::FromArgb(0,20,9)
     $cb = New-Object System.Windows.Forms.CheckBox; $cb.Checked=$al.Enabled; $cb.Left=8; $cb.Top=8; $cb.Width=18; $cb.Tag=$al.Id
-    $cb.Add_CheckedChanged({ param($s,$e) $t = $script:pn_alarms | Where-Object { $_.Id -eq $s.Tag } | Select-Object -First 1; if ($t) { $t.Enabled = $s.Checked }; Panel-UpdateStatus })
+    $cb.Add_CheckedChanged({ param($s,$e) $t = $script:pn_alarms | Where-Object { $_.Id -eq $s.Tag } | Select-Object -First 1; if ($t) { $t.Enabled = $s.Checked }; Panel-Persist; Panel-RefreshArmed; Panel-UpdateStatus })
     $lt = New-Object System.Windows.Forms.Label; $lt.Text=$al.Time; $lt.Left=32; $lt.Top=8; $lt.Width=60; $lt.ForeColor=$green; $lt.Font=$script:pn_rowFonts.T
     $ll = New-Object System.Windows.Forms.Label; $ll.Text=$al.Label; $ll.Left=100; $ll.Top=9; $ll.Width=200; $ll.ForeColor=$dim; $ll.Font=$script:pn_rowFonts.N
     $when = if ($al.Rhythm) { 'daily (rhythm)' } elseif ($al.Date) { $al.Date } else { 'next' }
@@ -401,7 +400,7 @@ function Panel-RenderRows {
     $ed = New-Object System.Windows.Forms.Button; $ed.Text='EDIT'; $ed.Left=800; $ed.Top=4; $ed.Width=80; $ed.Height=26; $ed.Tag=$al.Id; $ed.FlatStyle='Flat'; $ed.ForeColor=$green; $ed.BackColor=[System.Drawing.Color]::FromArgb(0,33,15); $ed.Font=$script:pn_rowFonts.B
     $ed.Add_Click({ param($s,$e) $a = $script:pn_alarms | Where-Object { $_.Id -eq $s.Tag } | Select-Object -First 1; if ($a) { Panel-LoadEditor $a } })
     $del = New-Object System.Windows.Forms.Button; $del.Text='DELETE'; $del.Left=888; $del.Top=4; $del.Width=86; $del.Height=26; $del.Tag=$al.Id; $del.FlatStyle='Flat'; $del.ForeColor=[System.Drawing.Color]::FromArgb(255,90,90); $del.BackColor=[System.Drawing.Color]::FromArgb(30,0,0); $del.Font=$script:pn_rowFonts.B
-    $del.Add_Click({ param($s,$e) $script:pn_alarms = @($script:pn_alarms | Where-Object { $_.Id -ne $s.Tag }); if ($script:pn_editId -eq $s.Tag) { Panel-LoadEditor $null }; Panel-RenderRows; Panel-UpdateStatus; Panel-Log "deleted" })
+    $del.Add_Click({ param($s,$e) $script:pn_alarms = @($script:pn_alarms | Where-Object { $_.Id -ne $s.Tag }); if ($script:pn_editId -eq $s.Tag) { Panel-LoadEditor $null }; Panel-Persist; Panel-RenderRows; Panel-RefreshArmed; Panel-UpdateStatus; Panel-Log "deleted" })
     $row.Controls.AddRange(@($cb,$lt,$ll,$ld,$ls,$ed,$del)); $script:pn_list.Controls.Add($row); $y += 38
   }
 }
@@ -425,14 +424,21 @@ function Panel-CollectEditor {
   $cats = [ordered]@{}; $anyCat = $false; foreach ($c in $script:CATS) { $cats[$c] = [bool]$script:pn_eCats[$c].Checked; if ($cats[$c]) { $anyCat = $true } }
   if (-not $anyCat) { $cats['arithmetic'] = $true }
   $id = if ($script:pn_editId) { $script:pn_editId } else { "a"+[guid]::NewGuid().ToString('N').Substring(0,6) }
-  [pscustomobject]@{ Id=$id; Label=$lab; Time=$t; Date=$d; Rhythm=[bool]$script:pn_eRhythm.Checked; Enabled=$true
+  $rhythm = [bool]$script:pn_eRhythm.Checked
+  $dateOut = $d
+  # blank date (and not a daily Rhythm) -> bake in the concrete next-occurrence date now
+  if (-not $rhythm -and $dateOut -eq "") { $w = Resolve-When $t "" $false; if ($w) { $dateOut = $w.ToString('yyyy-MM-dd') } }
+  [pscustomobject]@{ Id=$id; Label=$lab; Time=$t; Date=$dateOut; Rhythm=$rhythm; Enabled=$true
     Diff=[string]$script:pn_eDiff.SelectedItem; NumQ=[int]$script:pn_eNumQ.SelectedItem; DurationMin=$dur; LockVol=[bool]$script:pn_eLockVol.Checked; Cats=$cats }
 }
 function Panel-SaveAlarm {
   $a = Panel-CollectEditor; if (-not $a) { return }
   if ($script:pn_editId) { $script:pn_alarms = @($script:pn_alarms | ForEach-Object { if ($_.Id -eq $script:pn_editId) { $a } else { $_ } }) }
   else { $script:pn_alarms += $a }
-  Panel-LoadEditor $null; Panel-RenderRows; Panel-UpdateStatus; Panel-Log "saved $($a.Time) $($a.Label)  (press SAVE & ARM to activate)"
+  Panel-Persist
+  Panel-LoadEditor $null; Panel-RenderRows; Panel-RefreshArmed; Panel-UpdateStatus
+  $whenTxt = if ($a.Rhythm) { 'every day' } else { $a.Date }
+  Panel-Log "saved + armed: $($a.Time) $($a.Label) ($whenTxt)"
 }
 function Panel-SaveConfig {
   $alist = @()
@@ -441,6 +447,7 @@ function Panel-SaveConfig {
   ($obj | ConvertTo-Json -Depth 8) | Out-File -FilePath $script:cfgPath -Encoding utf8
   Load-Config
 }
+function Panel-Persist { Panel-SaveConfig; try { Register-Alarms } catch { Panel-Log ("arm error: " + $_.Exception.Message) } }
 function Panel-RefreshArmed {
   $armed = @(Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -like 'OVERRIDE_V2_*' -and $_.TaskName -notlike '*_safe_*' }).Count
   if ($armed -gt 0) { $script:pn_armed.Text = "ARMED ($armed)"; $script:pn_armed.ForeColor = [System.Drawing.Color]::FromArgb(0,255,102) } else { $script:pn_armed.Text = "NOT ARMED"; $script:pn_armed.ForeColor = [System.Drawing.Color]::FromArgb(255,140,0) }
@@ -459,6 +466,52 @@ function Panel-Test {
 }
 function Panel-Reposition {
   try { $cx = [int](($script:pn_form.ClientSize.Width - $script:pn_box.Width)/2); if ($cx -lt 0) { $cx = 0 }; $cy = [int](($script:pn_form.ClientSize.Height - $script:pn_box.Height)/2); if ($cy -lt 0) { $cy = 0 }; $script:pn_box.Left = $cx; $script:pn_box.Top = $cy } catch {}
+}
+function Collect-TextCtrls($parent, $list) {
+  foreach ($c in $parent.Controls) {
+    if (($c -is [System.Windows.Forms.Label]) -or ($c -is [System.Windows.Forms.Button])) { [void]$list.Add($c) }
+    if ($c.Controls.Count -gt 0) { Collect-TextCtrls $c $list }
+  }
+}
+function Rand-CJK($len) {
+  if (-not $script:pn_grng) { $script:pn_grng = New-Object System.Random }
+  if ($len -lt 2) { $len = 2 }; if ($len -gt 18) { $len = 18 }
+  $sb = New-Object System.Text.StringBuilder
+  for ($i=0; $i -lt $len; $i++) { [void]$sb.Append([char](0x4E00 + $script:pn_grng.Next(0,0x4DBF))) }
+  $sb.ToString()
+}
+function Panel-Glitch {
+  if (-not $script:pn_grng) { $script:pn_grng = New-Object System.Random }
+  if ($script:pn_glitchBusy) { return }
+  $script:pn_glitchBusy = $true; $script:pn_gN = 0; $script:pn_gHome = $script:pn_box.Location
+  $script:pn_gTimer = New-Object System.Windows.Forms.Timer; $script:pn_gTimer.Interval = 40
+  $script:pn_gTimer.Add_Tick({
+    $script:pn_gN++
+    if ($script:pn_gN -gt 8) { try { $script:pn_gTimer.Stop(); $script:pn_gTimer.Dispose() } catch {}; $script:pn_box.Location = $script:pn_gHome; $script:pn_glitchBusy = $false; return }
+    $script:pn_box.Location = New-Object System.Drawing.Point (($script:pn_gHome.X + $script:pn_grng.Next(-6,7)),($script:pn_gHome.Y + $script:pn_grng.Next(-6,7)))
+  })
+  $script:pn_gTimer.Start()
+}
+function Panel-VanishTick {
+  $script:pn_vStep++; $s = $script:pn_vStep
+  if ($s -le 26) { foreach ($c in $script:pn_vCtrls) { $o = [string]$script:pn_vOrigText[$c]; $c.Text = Rand-CJK ([int][math]::Min(18,[math]::Max(2,$o.Length))) } }
+  elseif ($s -le 40) { $script:pn_form.Opacity = [math]::Max(0.06, 1 - (($s-26)/14.0)); if ($s -eq 34) { Panel-Persist } }
+  elseif ($s -le 54) { $script:pn_form.Opacity = [math]::Min(1.0, 0.06 + (($s-40)/14.0)) }
+  else {
+    foreach ($c in $script:pn_vCtrls) { try { $c.Font = $script:pn_vOrigFont[$c]; $c.Text = [string]$script:pn_vOrigText[$c] } catch {} }
+    $script:pn_form.Opacity = 1.0; try { $script:pn_vTimer.Stop(); $script:pn_vTimer.Dispose() } catch {}
+    $script:pn_vanishBusy = $false; Panel-RenderRows; Panel-RefreshArmed; Panel-UpdateStatus; Panel-Log "DEPLOYED. alarms fire even if this window is closed."
+  }
+}
+function Panel-Deploy {
+  if ($script:pn_vanishBusy) { return }
+  $script:pn_vanishBusy = $true; Panel-Glitch
+  $list = New-Object System.Collections.ArrayList; Collect-TextCtrls $script:pn_box $list; $script:pn_vCtrls = $list
+  $script:pn_vOrigText = @{}; $script:pn_vOrigFont = @{}
+  $cjk = $null; try { $cjk = New-Object System.Drawing.Font('MS Gothic',11) } catch {}
+  foreach ($c in $list) { $script:pn_vOrigText[$c] = $c.Text; $script:pn_vOrigFont[$c] = $c.Font; if ($cjk) { try { $c.Font = $cjk } catch {} } }
+  $script:pn_vStep = 0
+  $script:pn_vTimer = New-Object System.Windows.Forms.Timer; $script:pn_vTimer.Interval = 55; $script:pn_vTimer.Add_Tick({ Panel-VanishTick }); $script:pn_vTimer.Start()
 }
 function Show-PanelGui {
   if (-not (Test-RingActive)) { Set-TaskMgrDisabled $false }
@@ -516,18 +569,18 @@ function Show-PanelGui {
 
   $r5 = 540
   $testBtn = New-Object System.Windows.Forms.Button; $testBtn.Text="TEST RING"; $testBtn.Left=24; $testBtn.Top=$r5; $testBtn.Width=180; $testBtn.Height=46; $script:pn_box.Controls.Add($testBtn)
-  $armBtn  = New-Object System.Windows.Forms.Button; $armBtn.Text="SAVE & ARM"; $armBtn.Left=214; $armBtn.Top=$r5; $armBtn.Width=200; $armBtn.Height=46; $script:pn_box.Controls.Add($armBtn)
+  $armBtn  = New-Object System.Windows.Forms.Button; $armBtn.Text=">> DEPLOY"; $armBtn.Left=214; $armBtn.Top=$r5; $armBtn.Width=200; $armBtn.Height=46; $script:pn_box.Controls.Add($armBtn)
   $disBtn  = New-Object System.Windows.Forms.Button; $disBtn.Text="DISARM ALL"; $disBtn.Left=424; $disBtn.Top=$r5; $disBtn.Width=170; $disBtn.Height=46; $script:pn_box.Controls.Add($disBtn)
   foreach ($b in @($testBtn,$armBtn,$disBtn)) { $b.FlatStyle='Flat'; $b.ForeColor=$green; $b.BackColor=[System.Drawing.Color]::FromArgb(0,33,15); $b.Font=New-Object System.Drawing.Font('Consolas',13,[System.Drawing.FontStyle]::Bold) }
   $testBtn.Add_Click({ Panel-Test })
-  $armBtn.Add_Click({ Panel-SaveConfig; Panel-Log "saving + arming..."; try { Register-Alarms } catch { Panel-Log ("arm error: " + $_.Exception.Message) }; Panel-RefreshArmed; Panel-UpdateStatus; Panel-Log "armed. alarms fire even if this window is closed." })
-  $disBtn.Add_Click({ Remove-Alarms; Panel-RefreshArmed; Panel-UpdateStatus; Panel-Log "all alarms disarmed." })
+  $armBtn.Add_Click({ Panel-Deploy })
+  $disBtn.Add_Click({ foreach ($al in $script:pn_alarms) { $al.Enabled = $false }; Panel-SaveConfig; Remove-Alarms; Panel-RenderRows; Panel-RefreshArmed; Panel-UpdateStatus; Panel-Log "all alarms disarmed + disabled" })
 
   $script:pn_status = New-Object System.Windows.Forms.Label; $script:pn_status.Left=24; $script:pn_status.Top=600; $script:pn_status.Width=640; $script:pn_status.Height=24; $script:pn_status.ForeColor=[System.Drawing.Color]::FromArgb(120,220,160); $script:pn_status.BackColor=[System.Drawing.Color]::Transparent; $script:pn_status.Font=New-Object System.Drawing.Font('Consolas',12); $script:pn_box.Controls.Add($script:pn_status)
   $script:pn_log = New-Object System.Windows.Forms.Label; $script:pn_log.Left=24; $script:pn_log.Top=628; $script:pn_log.Width=956; $script:pn_log.Height=22; $script:pn_log.ForeColor=[System.Drawing.Color]::FromArgb(90,170,120); $script:pn_log.BackColor=[System.Drawing.Color]::Transparent; $script:pn_log.Font=$fL; $script:pn_box.Controls.Add($script:pn_log)
   $hint = New-Object System.Windows.Forms.Label; $hint.Text="blank date = next occurrence  |  Rhythm = every day  |  each alarm has its own subjects/difficulty  |  0% CPU between alarms"; $hint.Left=24; $hint.Top=654; $hint.Width=956; $hint.Height=20; $hint.ForeColor=[System.Drawing.Color]::FromArgb(70,130,95); $hint.BackColor=[System.Drawing.Color]::Transparent; $hint.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($hint)
 
-  $script:pn_statusTimer = New-Object System.Windows.Forms.Timer; $script:pn_statusTimer.Interval = 1000; $script:pn_statusTimer.Add_Tick({ Panel-UpdateStatus })
+  $script:pn_statusTimer = New-Object System.Windows.Forms.Timer; $script:pn_statusTimer.Interval = 1000; $script:pn_statusTimer.Add_Tick({ Panel-UpdateStatus; $script:pn_tick++; if (($script:pn_tick % 11) -eq 0) { Panel-Glitch } })
   $script:pn_form.Add_Activated({ try { if ($script:pn_form.WindowState -ne 'Minimized') { $script:pn_rain.Timer.Start() } } catch {} })
   $script:pn_form.Add_Deactivate({ try { $script:pn_rain.Timer.Stop() } catch {} })
   $script:pn_form.Add_Resize({ Panel-Reposition; try { if ($script:pn_form.WindowState -eq 'Minimized') { $script:pn_rain.Timer.Stop() } else { $script:pn_rain.Timer.Start() } } catch {} })
