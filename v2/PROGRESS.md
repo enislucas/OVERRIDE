@@ -1,6 +1,12 @@
-# OVERRIDE — overnight rebuild progress / resume guide
+# OVERRIDE — progress / resume guide
 
-_Working log so progress survives a usage-limit cutoff. If you're a fresh session, READ THIS FIRST._
+> **STATUS (superseded):** the clean **v2 / config v3** rebuild has shipped — see `v2/README.md`
+> for the authoritative description. The "tonight's OVERRIDE_LIVE_* alarms" sections below are
+> historical: those one-time alarms have fired and their tasks were removed. The current app uses
+> the `OVERRIDE_V2_*` task namespace, drives v1's `wake_quiz.hta` (all 5 subjects), and has
+> per-alarm settings + rhythm/next-occurrence + a maximized resizable panel.
+
+_Working log so progress survives a usage-limit cutoff._
 
 ## ⛔ CRITICAL — do not break tonight's alarms
 Tonight's 3 alarms (2026-06-08, **03:30 / 03:42 / 04:25**) are armed as **protected** scheduled
