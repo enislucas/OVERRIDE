@@ -1,11 +1,11 @@
 {
-  "version": 2,
-  "numQuestions": 3,
-  "difficulty": "hard",
-  "categories": { "arithmetic": true },
-  "lockVolume": true,
-  "answerWindowSec": 180,
-  "alarms": [
-    { "id": "a3", "label": "WAKE UP", "time": "04:25", "date": "2026-06-08", "enabled": true }
-  ]
+  "version": 3,
+  "defaults": {
+    "difficulty": "hard",
+    "numQuestions": 3,
+    "durationMin": 3,
+    "lockVolume": true,
+    "categories": { "arithmetic": true, "derivatives": false, "vectors": false, "matrices": false, "capitals": false }
+  },
+  "alarms": []
 }

@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>OVERRIDE // identity check</title>
+<HTA:APPLICATION ID="app" APPLICATIONNAME="OverrideGate" BORDER="none" CAPTION="no"
+  SHOWINTASKBAR="no" SINGLEINSTANCE="yes" SYSMENU="no" MAXIMIZEBUTTON="no" MINIMIZEBUTTON="no"
+  WINDOWSTATE="maximize" SCROLL="no" CONTEXTMENU="no" SELECTION="no" />
+<style type="text/css">
+  html,body{height:100%;margin:0;background:#000;overflow:auto;
+    font-family:Consolas,"Lucida Console",monospace;color:#00ff66;}
+  #rain{position:fixed;top:0;left:0;z-index:0;}
+  #scan{position:fixed;top:0;left:0;width:100%;height:100%;z-index:1;pointer-events:none;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,0)0,rgba(0,0,0,0.22)2px,rgba(0,0,0,0)3px);}
+  #panel{position:relative;z-index:2;max-width:780px;margin:2% auto;padding:24px 30px;
+    background:rgba(0,12,4,0.85);border:1px solid #00ff66;border-radius:8px;
+    box-shadow:0 0 24px rgba(0,255,102,0.35),inset 0 0 30px rgba(0,255,102,0.06);}
+  .brand{font-size:13px;letter-spacing:3px;color:#0f8;opacity:.85;}
+  h1{font-size:32px;margin:6px 0 2px;text-shadow:0 0 10px #00ff66;}
+  .sub{font-size:15px;color:#7CFFB0;margin-bottom:16px;}
+  .q{margin:12px 0;}
+  .cat{font-size:11px;letter-spacing:2px;color:#0a7;}
+  .qline{font-size:27px;}
+  .qline .lbl{display:inline-block;min-width:330px;margin-right:12px;text-shadow:0 0 8px rgba(0,255,102,.6);}
+  input.ans{font-size:24px;width:230px;padding:6px;background:#001a0a;color:#aeffd2;
+    border:2px solid #0a5;border-radius:8px;outline:none;font-family:Consolas,monospace;text-shadow:0 0 6px #0f8;}
+  input.ans:focus{border-color:#00ff88;box-shadow:0 0 12px #00ff66;}
+  #go{margin-top:20px;font-size:22px;letter-spacing:2px;padding:13px 42px;cursor:pointer;
+    background:#00210f;color:#00ff88;border:2px solid #00ff66;border-radius:8px;text-shadow:0 0 8px #0f8;}
+  #go:hover{background:#00ff66;color:#001b0b;}
+  #msg{margin-top:14px;font-size:19px;height:24px;}
+  .bad{color:#ff3b3b;text-shadow:0 0 10px #f00;}
+  #conv{margin-top:18px;padding:10px 14px;border:1px dashed #075;border-radius:6px;
+    background:rgba(0,40,16,0.5);font-size:12.5px;color:#6fdca0;line-height:1.7;}
+  #conv b{color:#aaffcc;}
+  #done{display:none;text-align:center;}
+  #done h1{font-size:60px;color:#00ff88;}
+  .blink{animation:bl 1s steps(1) infinite;} @keyframes bl{50%{opacity:0;}}
+
+  /* fake windows script-error dialog */
+  #err{display:none;position:fixed;z-index:50;top:30%;left:50%;width:460px;margin-left:-230px;
+    background:#f0f0f0;color:#000;border:1px solid #777;border-radius:3px;
+    box-shadow:0 10px 40px rgba(0,0,0,0.7);font-family:Tahoma,Segoe UI,sans-serif;}
+  #err .bar{background:#d8d8d8;padding:6px 10px;font-size:13px;border-bottom:1px solid #bbb;}
+  #err .bar .x{float:right;cursor:pointer;color:#444;font-weight:bold;}
+  #err .body{padding:16px 18px;font-size:13px;}
+  #err .ico{float:left;font-size:34px;color:#d33;margin:0 14px 10px 0;line-height:1;}
+  #err table{font-size:12px;margin:6px 0 10px 48px;color:#222;}
+  #err td{padding:1px 6px;}
+  #err .foot{text-align:center;padding:0 0 14px;}
+  #err button{font-family:Tahoma,sans-serif;font-size:12px;padding:4px 18px;border:1px solid #888;
+    border-radius:3px;background:#e9e9e9;cursor:pointer;}
+</style>
+</head>
+<body onload="boot()">
+  <canvas id="rain"></canvas>
+  <div id="scan"></div>
+
+  <div id="err">
+    <div class="bar"><span id="errTitle">Script Error</span><span class="x" onclick="hideErr()">x</span></div>
+    <div class="body">
+      <div class="ico">&#9888;</div>
+      <div id="errMsg">An error has occurred.</div>
+      <table>
+        <tr><td>Line:</td><td id="errLine">404</td></tr>
+        <tr><td>Char:</td><td>3</td></tr>
+        <tr><td>Code:</td><td>0xDEADBED</td></tr>
+      </table>
+      <div class="foot"><button onclick="hideErr()">...fine</button></div>
+    </div>
+  </div>
+
+  <div id="panel">
+    <div id="quiz">
+      <div class="brand">OVERRIDE // WAKE PROTOCOL &nbsp; [ <span id="lbl">SYSTEM</span> ]</div>
+      <h1>IDENTITY VERIFICATION</h1>
+      <div class="sub">Solve every question to prove consciousness and disable the alarm.<span class="blink">_</span></div>
+      <div id="questions"></div>
+      <div><button id="go" onclick="check()">&gt; AUTHENTICATE</button></div>
+      <div id="msg">&nbsp;</div>
+      <div id="conv">
+        <b>INPUT CONVENTIONS</b> (we forgive spacing/*, but follow these):<br/>
+        powers &rarr; <b>x^2</b> &nbsp;|&nbsp; multiply &rarr; <b>2x</b> or 2*x &nbsp;|&nbsp; functions &rarr; <b>cos(x) sin(x) ln(x) e^(2x)</b><br/>
+        derivatives &rarr; write <b>all terms, highest power first</b>, e.g. <b>12x^3-10x+2</b><br/>
+        vectors &rarr; <b>(4,7)</b> or 4,7 &nbsp;|&nbsp; matrices &rarr; row by row <b>1,2,3,4</b> &nbsp;|&nbsp; capitals &rarr; <b>just the city</b>
+      </div>
+    </div>
+    <div id="done">
+      <div class="brand">OVERRIDE // WAKE PROTOCOL</div>
+      <h1>&#10003; ACCESS GRANTED</h1>
+      <div class="sub" style="font-size:22px">Alarm disabled. You beat the machine. Now go win the day, champion.</div>
+    </div>
+  </div>
+
+<script type="text/javascript">
+var ROOT="", KEY="", LABEL="SYSTEM", N=3, DIFF="medium", CATS=["arithmetic"], Q=[];
+
+function fso(){ return new ActiveXObject("Scripting.FileSystemObject"); }
+function trim(s){ return String(s).replace(/^\s+|\s+$/g,""); }
+function readFile(p){ try{ if(!fso().FileExists(p))return ""; var f=fso().OpenTextFile(p,1,false,0); var s=f.ReadAll(); f.Close(); return s; }catch(e){ return ""; } }
+function findRoot(){
+  var u=""; try{ u=location.href; }catch(e){} if(!u){ try{ u=document.URL; }catch(e){} }
+  u=u.replace(/^file:\/+/i,""); try{ u=decodeURIComponent(u); }catch(e){}
+  u=u.replace(/\//g,"\\"); var i=u.lastIndexOf("\\"); return (i>0)?u.substring(0,i):u;
+}
+function rnd(lo,hi){ return Math.floor(Math.random()*(hi-lo+1))+lo; }
+
+function deaccent(s){
+  var o=""; for(var i=0;i<s.length;i++){ var cc=s.charCodeAt(i), ch=s.charAt(i);
+    if(cc>=0x00e0&&cc<=0x00e5)o+="a"; else if(cc>=0x00e8&&cc<=0x00eb)o+="e";
+    else if(cc>=0x00ec&&cc<=0x00ef)o+="i"; else if(cc>=0x00f2&&cc<=0x00f6)o+="o";
+    else if(cc>=0x00f9&&cc<=0x00fc)o+="u"; else if(cc==0x00e7)o+="c";
+    else if(cc==0x00f1)o+="n"; else o+=ch; }
+  return o;
+}
+function normMath(s){
+  s=String(s).toLowerCase().replace(/\s+/g,"");
+  var o=""; for(var i=0;i<s.length;i++){ var cc=s.charCodeAt(i), ch=s.charAt(i);
+    if(cc==0x2212||cc==0x2013||cc==0x2014)o+="-";          // minus / dashes -> hyphen
+    else if(cc==0x00d7||cc==0x00b7||ch=="*"){}              // times / middot / * -> drop
+    else if(cc==0x00b2)o+="^2"; else if(cc==0x00b3)o+="^3"; // superscripts
+    else o+=ch; }
+  return o;
+}
+function normVec(s){ return normMath(s).replace(/[()\[\]]/g,""); }
+function normText(s){ return trim(deaccent(String(s).toLowerCase())).replace(/\s+/g," ").replace(/\./g,""); }
+
+/* ---------------- generators ---------------- */
+function fmtPow(c,p){ if(p==0)return ""+c; if(p==1)return (c==1?"x":c+"x"); return (c==1?"":""+c)+"x^"+p; }
+function joinTerms(ts){
+  var a=[]; for(var i=0;i<ts.length;i++){ if(ts[i].c!=0)a.push(ts[i]); }
+  a.sort(function(x,y){return y.p-x.p;}); if(a.length==0)return "0";
+  var out=""; for(var i=0;i<a.length;i++){ var c=a[i].c,p=a[i].p,t=fmtPow(Math.abs(c),p);
+    out+= (i==0?(c<0?"-":""):(c<0?"-":"+"))+t; } return out;
+}
+function dispTerm(c,p){ if(p==0)return ""+c; if(p==1)return c+"x"; return c+"x^"+p; }
+function dispPoly(ts){ var out=""; for(var i=0;i<ts.length;i++){ var c=ts[i].c,p=ts[i].p,t=dispTerm(Math.abs(c),p);
+  out+= (i==0?(c<0?"-":""):(c<0?" - ":" + "))+t; } return out; }
+
+function genArith(d){
+  var t=rnd(0,2),a,b,txt,ans;
+  if(d=="easy"){ if(t==0){a=rnd(1,9);b=rnd(1,9);txt=a+" + "+b;ans=a+b;}else if(t==1){a=rnd(10,18);b=rnd(1,9);txt=a+" &#8722; "+b;ans=a-b;}else{a=rnd(2,5);b=rnd(2,5);txt=a+" &#215; "+b;ans=a*b;} }
+  else if(d=="hard"){ if(t==0){a=rnd(23,89);b=rnd(23,89);txt=a+" + "+b;ans=a+b;}else if(t==1){a=rnd(40,99);b=rnd(11,39);txt=a+" &#8722; "+b;ans=a-b;}else{a=rnd(6,15);b=rnd(3,12);txt=a+" &#215; "+b;ans=a*b;} }
+  else { if(t==0){a=rnd(8,29);b=rnd(8,29);txt=a+" + "+b;ans=a+b;}else if(t==1){a=rnd(15,40);b=rnd(2,14);txt=a+" &#8722; "+b;ans=a-b;}else{a=rnd(3,7);b=rnd(3,7);txt=a+" &#215; "+b;ans=a*b;} }
+  return {q:txt+" =", ans:[normMath(""+ans)], type:"math", cat:"ARITHMETIC"};
+}
+function genDeriv(d){
+  if(d=="easy"){
+    var t=rnd(0,1);
+    if(t==0){ var n=rnd(2,4); return {q:"d/dx ( x^"+n+" )", ans:[normMath(joinTerms([{c:n,p:n-1}]))], type:"math", cat:"DERIVATIVE"}; }
+    var k=rnd(2,9); return {q:"d/dx ( "+k+"x )", ans:[normMath(""+k)], type:"math", cat:"DERIVATIVE"};
+  }
+  if(d=="medium"){
+    var a=rnd(2,5),m=rnd(2,4),b=rnd(2,6),k=rnd(1,m-1);
+    var orig=[{c:a,p:m},{c:b,p:k}]; var der=[{c:a*m,p:m-1},{c:b*k,p:k-1}];
+    return {q:"d/dx ( "+dispPoly(orig)+" )", ans:[normMath(joinTerms(der))], type:"math", cat:"DERIVATIVE"};
+  }
+  // hard
+  var pick=rnd(0,3);
+  if(pick==0){ var a=rnd(2,4),b=rnd(2,5),c=rnd(2,6);
+    var orig=[{c:a,p:4},{c:-b,p:2},{c:c,p:1}]; var der=[{c:4*a,p:3},{c:-2*b,p:1},{c:c,p:0}];
+    return {q:"d/dx ( "+dispPoly(orig)+" )", ans:[normMath(joinTerms(der))], type:"math", cat:"DERIVATIVE"}; }
+  if(pick==1){ var k=rnd(2,4);
+    return {q:"d/dx ( e^("+k+"x) )", ans:[normMath(k+"e^("+k+"x)"), normMath(k+"e^"+k+"x")], type:"math", cat:"DERIVATIVE"}; }
+  if(pick==2){ var a=rnd(2,4);
+    return {q:"d/dx ( ln(x) + "+a+"x^3 )", ans:[normMath("1/x+"+(3*a)+"x^2")], type:"math", cat:"DERIVATIVE"}; }
+  // trig combo
+  var c2=rnd(2,3);
+  return {q:"d/dx ( sin(x) &#8722; "+c2+"cos(x) )", ans:[normMath("cos(x)+"+c2+"sin(x)"), normMath("cosx+"+c2+"sinx")], type:"math", cat:"DERIVATIVE"};
+}
+function genVector(d){
+  if(d=="hard"){ var a=rnd(1,9),b=rnd(1,9),c=rnd(1,9),e=rnd(1,9);
+    return {q:"("+a+","+b+") &#183; ("+c+","+e+")   [dot product]", ans:[normMath(""+(a*c+b*e))], type:"math", cat:"VECTOR"}; }
+  if(d=="medium" && rnd(0,1)==0){ var k=rnd(2,5),a=rnd(1,9),b=rnd(1,9);
+    return {q:k+" &#215; ("+a+","+b+")", ans:[normVec("("+(k*a)+","+(k*b)+")")], type:"vec", cat:"VECTOR"}; }
+  var lo=(d=="medium")?5:1, hi=(d=="medium")?20:9;
+  var a=rnd(lo,hi),b=rnd(lo,hi),c=rnd(lo,hi),e=rnd(lo,hi);
+  if(rnd(0,1)==0) return {q:"("+a+","+b+") + ("+c+","+e+")", ans:[normVec("("+(a+c)+","+(b+e)+")")], type:"vec", cat:"VECTOR"};
+  return {q:"("+(a+c)+","+(b+e)+") &#8722; ("+c+","+e+")", ans:[normVec("("+a+","+b+")")], type:"vec", cat:"VECTOR"};
+}
+function genMatrix(d){
+  function M(){ var lo=(d=="hard")?-6:1, hi=9; return [rnd(lo,hi),rnd(lo,hi),rnd(lo,hi),rnd(lo,hi)]; }
+  var m=M();
+  if(d=="easy"){ return {q:"trace [["+m[0]+","+m[1]+"],["+m[2]+","+m[3]+"]]", ans:[normMath(""+(m[0]+m[3]))], type:"math", cat:"MATRIX"}; }
+  if(d=="hard"){ var x=M();
+    var r=[m[0]+x[0],m[1]+x[1],m[2]+x[2],m[3]+x[3]];
+    return {q:"[["+m[0]+","+m[1]+"],["+m[2]+","+m[3]+"]] + [["+x[0]+","+x[1]+"],["+x[2]+","+x[3]+"]]",
+      ans:[normVec(r[0]+","+r[1]+","+r[2]+","+r[3])], type:"vec", cat:"MATRIX (add, row by row)"}; }
+  return {q:"det [["+m[0]+","+m[1]+"],["+m[2]+","+m[3]+"]]", ans:[normMath(""+(m[0]*m[3]-m[1]*m[2]))], type:"math", cat:"MATRIX"};
+}
+var CAP={
+ easy:[["France",["paris"]],["Japan",["tokyo"]],["Italy",["rome"]],["Spain",["madrid"]],["Germany",["berlin"]],["Egypt",["cairo"]],["Russia",["moscow"]],["China",["beijing"]],["Greece",["athens"]],["Portugal",["lisbon"]],["the United Kingdom",["london"]],["the USA",["washington","washington dc"]]],
+ medium:[["Canada",["ottawa"]],["Australia",["canberra"]],["Brazil",["brasilia"]],["Turkey",["ankara"]],["Switzerland",["bern","berne"]],["the Netherlands",["amsterdam"]],["Sweden",["stockholm"]],["Norway",["oslo"]],["Poland",["warsaw"]],["Austria",["vienna"]],["Ireland",["dublin"]],["Finland",["helsinki"]]],
+ hard:[["Morocco",["rabat"]],["New Zealand",["wellington"]],["Nigeria",["abuja"]],["Vietnam",["hanoi"]],["Pakistan",["islamabad"]],["Saudi Arabia",["riyadh"]],["Ukraine",["kyiv","kiev"]],["Indonesia",["jakarta"]],["the Philippines",["manila"]],["Chile",["santiago"]],["Colombia",["bogota"]],["Kazakhstan",["astana","nur-sultan"]]]
+};
+function genCapital(d){
+  var arr=CAP[d]||CAP.easy; var pick=arr[rnd(0,arr.length-1)];
+  var acc=[]; for(var i=0;i<pick[1].length;i++) acc.push(normText(pick[1][i]));
+  return {q:"Capital of "+pick[0]+" ?", ans:acc, type:"text", cat:"GEOGRAPHY"};
+}
+function genOne(cat){
+  if(cat=="derivatives")return genDeriv(DIFF);
+  if(cat=="vectors")return genVector(DIFF);
+  if(cat=="matrices")return genMatrix(DIFF);
+  if(cat=="capitals")return genCapital(DIFF);
+  return genArith(DIFF);
+}
+
+/* ---------------- ui ---------------- */
+function gen(){
+  if(isNaN(N)||N<1)N=3; if(N>6)N=6; Q=[];
+  var html="";
+  for(var i=0;i<N;i++){
+    var cat=CATS[rnd(0,CATS.length-1)]; var o=genOne(cat); Q.push(o);
+    html+='<div class="q"><div class="cat">'+o.cat+'</div>'+
+      '<div class="qline"><span class="lbl">'+o.q+'</span>'+
+      '<input class="ans" id="a'+i+'" maxlength="40" onkeydown="key(event,'+i+')" /></div></div>';
+  }
+  document.getElementById('questions').innerHTML=html;
+  try{ document.getElementById('a0').focus(); }catch(e){}
+}
+function normFor(o,val){ if(o.type=="text")return normText(val); if(o.type=="vec")return normVec(val); return normMath(val); }
+function key(ev,i){ var k=ev.keyCode||ev.which; if(k==13){ if(i<N-1){ try{document.getElementById('a'+(i+1)).focus();}catch(e){} } else { check(); } } }
+function check(){
+  var ok=true;
+  for(var i=0;i<N;i++){
+    var box=document.getElementById('a'+i); var u=normFor(Q[i],box.value); var hit=false;
+    for(var j=0;j<Q[i].ans.length;j++){ if(u!==""&&u===Q[i].ans[j]){hit=true;break;} }
+    box.style.borderColor= hit?"#00ff88":"#ff3b3b";
+    if(!hit)ok=false;
+  }
+  if(ok){ grant(); }
+  else { document.getElementById('msg').innerHTML='<span class="bad">&gt; ACCESS DENIED &mdash; recompute. WAKE UP.</span>';
+         glitch(11,650); if(rnd(0,1)==0) showErr(); gen(); }
+}
+function grant(){
+  try{ var f=fso().CreateTextFile(ROOT+"\\UNLOCK",true); f.Write(KEY); f.Close(); }catch(e){}
+  document.getElementById('quiz').style.display="none";
+  document.getElementById('done').style.display="block";
+  setTimeout(function(){ try{ window.close(); }catch(e){} }, 7000);
+}
+
+/* ---------------- fake error prank ---------------- */
+var ERRS=[
+ ["FATAL_ERROR 0x57AKE","Subject still detected in horizontal position. This incident has been reported to your 9 AM self."],
+ ["CRITICAL FAULT","Laziness.dll is consuming 100% of your remaining potential. Solve math to terminate process."],
+ ["SECURITY ALERT","Unauthorized snooze attempt from device BED-01. Deploying countermeasures..."],
+ ["motivation.exe","motivation.exe could not be located. Please reinstall by standing up."],
+ ["INCOMING CALL","Your future self has joined the call. They look... disappointed."]
+];
+function showErr(){ var e=ERRS[rnd(0,ERRS.length-1)];
+  document.getElementById('errTitle').innerHTML=e[0];
+  document.getElementById('errMsg').innerHTML=e[1];
+  document.getElementById('errLine').innerHTML=rnd(100,999);
+  document.getElementById('err').style.display="block";
+}
+function hideErr(){ document.getElementById('err').style.display="none"; }
+
+/* ---------------- glitch / shake ---------------- */
+function glitch(intensity,ms){
+  var b=document.body, steps=Math.floor(ms/40), i=0;
+  var iv=setInterval(function(){
+    var dx=(Math.random()*2-1)*intensity, dy=(Math.random()*2-1)*intensity, sk=(Math.random()*2-1)*intensity*0.35;
+    var tr="translate("+dx+"px,"+dy+"px) skewX("+sk+"deg)";
+    b.style.transform=tr; b.style.msTransform=tr;
+    i++; if(i>=steps){ clearInterval(iv); b.style.transform=""; b.style.msTransform=""; }
+  },40);
+}
+
+/* ---------------- self-close when the alarm engine is gone ---------------- */
+var QUIZ_START = new Date();
+function engineGone(){
+  try{
+    var f=ROOT+"\\session.beat", o=fso();
+    if(!o.FileExists(f)) return true;                                  // engine stopped (heartbeat removed)
+    var age=(new Date())-(new Date(o.GetFile(f).DateLastModified));
+    return age>6000;                                                   // heartbeat stale -> engine dead
+  }catch(e){ return false; }
+}
+function watchEngine(){
+  if(((new Date())-QUIZ_START)<10000) return;                         // startup grace
+  if(engineGone()){ try{ window.close(); }catch(e){} }
+}
+
+/* ---------------- boot ---------------- */
+function loadConfig(){
+  /* v2: per-alarm quiz settings are written by the ring engine to session.quizcfg */
+  var s=readFile(ROOT+"\\session.quizcfg");
+  if(!s){ s=readFile(ROOT+"\\config.json"); }
+  if(s){ try{ var c=eval("("+s+")");
+    if(c.numQuestions)N=parseInt(c.numQuestions,10);
+    if(c.difficulty)DIFF=String(c.difficulty);
+    if(c.categories){ var arr=[]; for(var k in c.categories){ if(c.categories[k])arr.push(k); } if(arr.length)CATS=arr; }
+  }catch(e){} }
+}
+function boot(){
+  ROOT=findRoot();
+  QUIZ_START=new Date();
+  KEY=trim(readFile(ROOT+"\\session.key"));
+  var lb=trim(readFile(ROOT+"\\session.label")); if(lb){ LABEL=lb; }
+  try{ document.getElementById('lbl').innerHTML=LABEL; }catch(e){}
+  loadConfig();
+  // matrix rain
+  var c=document.getElementById('rain'); c.width=document.body.clientWidth; c.height=document.body.clientHeight;
+  var x=c.getContext('2d'); var fs=16, cols=Math.floor(c.width/fs), drops=[];
+  for(var i=0;i<cols;i++) drops[i]=Math.floor(Math.random()*(c.height/fs));
+  var chars="01234567890123456789ABCDEFXYZ<>/\\*-+=#%";
+  setInterval(function(){
+    x.fillStyle="rgba(0,0,0,0.08)"; x.fillRect(0,0,c.width,c.height);
+    x.fillStyle="#00ff66"; x.font=fs+"px monospace";
+    for(var i=0;i<drops.length;i++){ x.fillText(chars.charAt(Math.floor(Math.random()*chars.length)),i*fs,drops[i]*fs);
+      if(drops[i]*fs>c.height && Math.random()>0.975) drops[i]=0; drops[i]++; }
+  },55);
+  // ambient glitch every 6-13s
+  setInterval(function(){ glitch(4,320); }, 6000+Math.floor(Math.random()*7000));
+  // self-close when the alarm engine stops, so windows never pile up
+  setInterval(watchEngine, 1500);
+  gen();
+  setTimeout(showErr, 900);   // greet them with a "scary" error
+}
+</script>
+</body>
+</html>
