@@ -99,6 +99,11 @@ public static class Win {
   [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int cx, int cy, uint f);
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int n);
+  [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll")] static extern bool AttachThreadInput(uint a, uint b, bool f);
+  [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
+  [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
   static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
   public static void Pin(IntPtr h, int x, int y, int w, int hh) {   // once: bring up + take foreground
     if (h == IntPtr.Zero) return;
@@ -109,6 +114,17 @@ public static class Win {
   public static void Top(IntPtr h, int x, int y, int w, int hh) {   // maintain: topmost + position only, NO focus-steal
     if (h == IntPtr.Zero) return;
     SetWindowPos(h, HWND_TOPMOST, x, y, w, hh, 0x0040);
+  }
+  public static bool IsForeground(IntPtr h){ return GetForegroundWindow() == h; }
+  public static void Force(IntPtr h, int x, int y, int w, int hh){   // reliably bring h ON TOP + focused over the current foreground app (e.g. Edge)
+    if (h == IntPtr.Zero) return;
+    ShowWindow(h, 5);
+    SetWindowPos(h, HWND_TOPMOST, x, y, w, hh, 0x0040);
+    uint pid; uint fg = GetWindowThreadProcessId(GetForegroundWindow(), out pid);
+    uint cur = GetCurrentThreadId();
+    if (fg != cur) AttachThreadInput(cur, fg, true);
+    BringWindowToTop(h); SetForegroundWindow(h);
+    if (fg != cur) AttachThreadInput(cur, fg, false);
   }
 }
 "@
@@ -195,8 +211,9 @@ function Ring-Tick {
     try {
       $script:rg_mshta.Refresh(); $h = $script:rg_mshta.MainWindowHandle
       if ($h -ne [IntPtr]::Zero) {
-        if ($h -ne $script:rg_pinnedH) { [Win]::Pin($h, 0, 0, $script:rg_sw, $script:rg_sh); $script:rg_pinnedH = $h }   # foreground ONCE when it appears
-        elseif (($script:rg_tk % 6) -eq 0) { [Win]::Top($h, 0, 0, $script:rg_sw, $script:rg_sh) }                        # gentle re-topmost every ~3s, no focus-steal
+        if ($h -ne $script:rg_pinnedH) { $script:rg_pinnedH = $h; $script:rg_fgTries = 0 }
+        if ($script:rg_fgTries -lt 10 -and -not [Win]::IsForeground($h)) { [Win]::Force($h, 0, 0, $script:rg_sw, $script:rg_sh); $script:rg_fgTries++ }  # keep pulling it on top+focus until it wins (first ~5s)
+        elseif (($script:rg_tk % 6) -eq 0) { [Win]::Top($h, 0, 0, $script:rg_sw, $script:rg_sh) }                                                        # then just hold topmost, no focus-steal -> no freeze
       }
     } catch {}
   }
@@ -218,7 +235,7 @@ function Run-Ring {
   ($qc | ConvertTo-Json -Compress) | Set-Content -Path (Join-Path $script:root 'session.quizcfg') -Encoding ASCII
 
   $script:rg_relaunch = $S.Relaunch; $script:rg_lockdown = $S.Lockdown; $script:rg_lockVol = $S.LockVol
-  $script:rg_mshta = $null; $script:rg_sndIdx = 0; $script:rg_nagAt = $start.AddSeconds(14); $script:rg_tk = 0; $script:rg_pinnedH = [IntPtr]::Zero
+  $script:rg_mshta = $null; $script:rg_sndIdx = 0; $script:rg_nagAt = $start.AddSeconds(14); $script:rg_tk = 0; $script:rg_pinnedH = [IntPtr]::Zero; $script:rg_fgTries = 0
   $sb = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $script:rg_sw = $sb.Width; $script:rg_sh = $sb.Height
   $script:rg_nags = @("Solve it. Wake up.","Still horizontal? Pathetic.","I can do this all morning.","Your blanket will not save you.","Recompute. Now.")
 
