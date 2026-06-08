@@ -311,7 +311,7 @@ function boot(){
     x.fillStyle="#00ff66"; x.font=fs+"px monospace";
     for(var i=0;i<drops.length;i++){ x.fillText(chars.charAt(Math.floor(Math.random()*chars.length)),i*fs,drops[i]*fs);
       if(drops[i]*fs>c.height && Math.random()>0.975) drops[i]=0; drops[i]++; }
-  },55);
+  },80);
   // ambient glitch every 6-13s
   setInterval(function(){ glitch(4,320); }, 6000+Math.floor(Math.random()*7000));
   // self-close when the alarm engine stops, so windows never pile up

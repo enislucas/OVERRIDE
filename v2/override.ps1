@@ -100,11 +100,15 @@ public static class Win {
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int n);
   static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
-  public static void Pin(IntPtr h, int x, int y, int w, int hh) {
+  public static void Pin(IntPtr h, int x, int y, int w, int hh) {   // once: bring up + take foreground
     if (h == IntPtr.Zero) return;
     ShowWindow(h, 5);                                       // SW_SHOW
     SetWindowPos(h, HWND_TOPMOST, x, y, w, hh, 0x0040);     // SWP_SHOWWINDOW
     SetForegroundWindow(h);
+  }
+  public static void Top(IntPtr h, int x, int y, int w, int hh) {   // maintain: topmost + position only, NO focus-steal
+    if (h == IntPtr.Zero) return;
+    SetWindowPos(h, HWND_TOPMOST, x, y, w, hh, 0x0040);
   }
 }
 "@
@@ -183,13 +187,20 @@ function Ring-Tick {
   # deadline / panic
   if ($now -ge $script:rg_deadline -or (Test-Path (Join-Path $script:root 'PANIC'))) { End-Ring; return }
   # ensure the HTA is alive + pinned fullscreen on top
-  $alive = ($script:rg_mshta -ne $null) -and (-not $script:rg_mshta.HasExited)
+  $script:rg_tk++
+  $alive = ($null -ne $script:rg_mshta) -and (-not $script:rg_mshta.HasExited)
   if (-not $alive) {
-    if ($script:rg_relaunch) { Launch-HTA } else { End-Ring; return }
+    if ($script:rg_relaunch) { Launch-HTA; $script:rg_pinnedH = [IntPtr]::Zero } else { End-Ring; return }
   } else {
-    try { $script:rg_mshta.Refresh(); $h = $script:rg_mshta.MainWindowHandle; if ($h -ne [IntPtr]::Zero) { [Win]::Pin($h, 0, 0, $script:rg_sw, $script:rg_sh) } } catch {}
+    try {
+      $script:rg_mshta.Refresh(); $h = $script:rg_mshta.MainWindowHandle
+      if ($h -ne [IntPtr]::Zero) {
+        if ($h -ne $script:rg_pinnedH) { [Win]::Pin($h, 0, 0, $script:rg_sw, $script:rg_sh); $script:rg_pinnedH = $h }   # foreground ONCE when it appears
+        elseif (($script:rg_tk % 6) -eq 0) { [Win]::Top($h, 0, 0, $script:rg_sw, $script:rg_sh) }                        # gentle re-topmost every ~3s, no focus-steal
+      }
+    } catch {}
   }
-  if ($script:rg_lockdown) { try { Get-Process -Name Taskmgr -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue } catch {} }
+  if ($script:rg_lockdown -and (($script:rg_tk % 6) -eq 0)) { try { Get-Process -Name Taskmgr -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue } catch {} }
   if ($script:rg_voice -and ($now -ge $script:rg_nagAt)) { try { [void]$script:rg_voice.SpeakAsync(($script:rg_nags | Get-Random)) } catch {}; $script:rg_nagAt = $now.AddSeconds(13) }
 }
 function Run-Ring {
@@ -207,7 +218,7 @@ function Run-Ring {
   ($qc | ConvertTo-Json -Compress) | Set-Content -Path (Join-Path $script:root 'session.quizcfg') -Encoding ASCII
 
   $script:rg_relaunch = $S.Relaunch; $script:rg_lockdown = $S.Lockdown; $script:rg_lockVol = $S.LockVol
-  $script:rg_mshta = $null; $script:rg_sndIdx = 0; $script:rg_nagAt = $start.AddSeconds(14)
+  $script:rg_mshta = $null; $script:rg_sndIdx = 0; $script:rg_nagAt = $start.AddSeconds(14); $script:rg_tk = 0; $script:rg_pinnedH = [IntPtr]::Zero
   $sb = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $script:rg_sw = $sb.Width; $script:rg_sh = $sb.Height
   $script:rg_nags = @("Solve it. Wake up.","Still horizontal? Pathetic.","I can do this all morning.","Your blanket will not save you.","Recompute. Now.")
 
@@ -314,7 +325,12 @@ function Show-Tasks {
 
 # ---- matrix rain (shared, fps-capped, double-buffered) ---------------------
 function Update-RainSize($p) {
-  $st = $p.Tag; $w = [math]::Max(1,$p.ClientSize.Width); $h = [math]::Max(1,$p.ClientSize.Height)
+  $st = $p.Tag
+  $dw = [math]::Max(1,$p.ClientSize.Width); $dh = [math]::Max(1,$p.ClientSize.Height)
+  $st.dispW = $dw; $st.dispH = $dh
+  # cap internal render resolution (scale up on paint) so cost does NOT grow with screen size
+  $w = $dw; $h = $dh
+  if ($w -gt 900) { $sf = 900.0 / $w; $w = 900; $h = [math]::Max(1,[int]($h * $sf)) }
   if ($st.bmp -and $st.bmp.Width -eq $w -and $st.bmp.Height -eq $h) { return }
   if ($st.bmp) { $st.bmp.Dispose() }
   $st.bmp = New-Object System.Drawing.Bitmap $w, $h
@@ -344,9 +360,9 @@ function New-RainBackground {
   $st = @{ bmp=$null; scan=$null; drops=$null; cols=0; fh=$FontSize
     font=(New-Object System.Drawing.Font('Consolas',$FontSize,[System.Drawing.FontStyle]::Bold))
     chars='0123456789ABCDEF#$%*+=<>/\|'; fade=(New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(38,0,0,0)))
-    body=(New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(0,255,102))); rng=(New-Object System.Random) }
+    body=(New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(0,255,102))); rng=(New-Object System.Random); dispW=0; dispH=0 }
   $panel.Tag = $st
-  $panel.Add_Paint({ param($s,$e) $stt = $s.Tag; if ($stt.bmp) { $e.Graphics.DrawImageUnscaled($stt.bmp,0,0) } })
+  $panel.Add_Paint({ param($s,$e) $stt = $s.Tag; if ($stt.bmp) { $e.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor; $e.Graphics.DrawImage($stt.bmp, 0, 0, [int]$stt.dispW, [int]$stt.dispH) } })
   $panel.Add_Resize({ param($s,$e) Update-RainSize $s })
   $timer = New-Object System.Windows.Forms.Timer; $timer.Interval = [int](1000/$Fps); $timer.Tag = $panel
   $timer.Add_Tick({ param($s,$e) Step-Rain $s.Tag })
@@ -405,7 +421,7 @@ function Panel-RenderRows {
   }
 }
 function Panel-LoadEditor($al) {
-  if (-not $al) { $al = New-Alarm $script:cfg.defaults; $script:pn_editId = $null; $script:pn_saveBtn.Text = '+ ADD ALARM' }
+  if (-not $al) { $al = New-Alarm $script:cfg.defaults; $script:pn_editId = $null; $script:pn_saveBtn.Text = 'DEPLOY ALARM' }
   else { $script:pn_editId = $al.Id; $script:pn_saveBtn.Text = 'SAVE CHANGES' }
   $script:pn_eTime.Text = $al.Time; $script:pn_eLabel.Text = $al.Label; $script:pn_eDate.Text = $al.Date
   $script:pn_eRhythm.Checked = $al.Rhythm; $script:pn_eLockVol.Checked = $al.LockVol
@@ -525,7 +541,7 @@ function Show-PanelGui {
   $script:pn_form.WindowState = 'Maximized'; $script:pn_form.BackColor = [System.Drawing.Color]::Black
   $ico = Join-Path $script:root 'override.ico'; if (Test-Path $ico) { try { $script:pn_form.Icon = New-Object System.Drawing.Icon $ico } catch {} }
 
-  $script:pn_rain = New-RainBackground -Fps 12 -FontSize 16
+  $script:pn_rain = New-RainBackground -Fps 8 -FontSize 18
   $script:pn_form.Controls.Add($script:pn_rain.Panel)
 
   $script:pn_box = New-Object System.Windows.Forms.Panel; $script:pn_box.Width=1000; $script:pn_box.Height=720; $script:pn_box.BackColor=[System.Drawing.Color]::FromArgb(0,12,5)
@@ -564,12 +580,12 @@ function Show-PanelGui {
   foreach ($c in $script:CATS) { $chk = New-Object System.Windows.Forms.CheckBox; $chk.Text=$c; $chk.Left=$cx; $chk.Top=$r3; $chk.Width=([int]($c.Length*9)+40); $chk.ForeColor=$green; $chk.BackColor=[System.Drawing.Color]::Transparent; $chk.Font=$fL; $script:pn_box.Controls.Add($chk); $script:pn_eCats[$c]=$chk; $cx += ([int]($c.Length*9)+50) }
 
   $r4 = 478
-  $script:pn_saveBtn = New-Object System.Windows.Forms.Button; $script:pn_saveBtn.Text='+ ADD ALARM'; $script:pn_saveBtn.Left=24; $script:pn_saveBtn.Top=$r4; $script:pn_saveBtn.Width=200; $script:pn_saveBtn.Height=36; $script:pn_saveBtn.FlatStyle='Flat'; $script:pn_saveBtn.ForeColor=$green; $script:pn_saveBtn.BackColor=[System.Drawing.Color]::FromArgb(0,33,15); $script:pn_saveBtn.Font=$fLb; $script:pn_saveBtn.Add_Click({ Panel-SaveAlarm }); $script:pn_box.Controls.Add($script:pn_saveBtn)
+  $script:pn_saveBtn = New-Object System.Windows.Forms.Button; $script:pn_saveBtn.Text='DEPLOY ALARM'; $script:pn_saveBtn.Left=24; $script:pn_saveBtn.Top=$r4; $script:pn_saveBtn.Width=200; $script:pn_saveBtn.Height=36; $script:pn_saveBtn.FlatStyle='Flat'; $script:pn_saveBtn.ForeColor=$green; $script:pn_saveBtn.BackColor=[System.Drawing.Color]::FromArgb(0,33,15); $script:pn_saveBtn.Font=$fLb; $script:pn_saveBtn.Add_Click({ Panel-SaveAlarm }); $script:pn_box.Controls.Add($script:pn_saveBtn)
   $newBtn = New-Object System.Windows.Forms.Button; $newBtn.Text='NEW / CLEAR'; $newBtn.Left=234; $newBtn.Top=$r4; $newBtn.Width=140; $newBtn.Height=36; $newBtn.FlatStyle='Flat'; $newBtn.ForeColor=$dim; $newBtn.BackColor=[System.Drawing.Color]::FromArgb(0,24,11); $newBtn.Font=$fL; $newBtn.Add_Click({ Panel-LoadEditor $null; Panel-Log "editor cleared" }); $script:pn_box.Controls.Add($newBtn)
 
   $r5 = 540
   $testBtn = New-Object System.Windows.Forms.Button; $testBtn.Text="TEST RING"; $testBtn.Left=24; $testBtn.Top=$r5; $testBtn.Width=180; $testBtn.Height=46; $script:pn_box.Controls.Add($testBtn)
-  $armBtn  = New-Object System.Windows.Forms.Button; $armBtn.Text=">> DEPLOY"; $armBtn.Left=214; $armBtn.Top=$r5; $armBtn.Width=200; $armBtn.Height=46; $script:pn_box.Controls.Add($armBtn)
+  $armBtn  = New-Object System.Windows.Forms.Button; $armBtn.Text=">> RE-DEPLOY ALL"; $armBtn.Left=214; $armBtn.Top=$r5; $armBtn.Width=200; $armBtn.Height=46; $script:pn_box.Controls.Add($armBtn)
   $disBtn  = New-Object System.Windows.Forms.Button; $disBtn.Text="DISARM ALL"; $disBtn.Left=424; $disBtn.Top=$r5; $disBtn.Width=170; $disBtn.Height=46; $script:pn_box.Controls.Add($disBtn)
   foreach ($b in @($testBtn,$armBtn,$disBtn)) { $b.FlatStyle='Flat'; $b.ForeColor=$green; $b.BackColor=[System.Drawing.Color]::FromArgb(0,33,15); $b.Font=New-Object System.Drawing.Font('Consolas',13,[System.Drawing.FontStyle]::Bold) }
   $testBtn.Add_Click({ Panel-Test })
