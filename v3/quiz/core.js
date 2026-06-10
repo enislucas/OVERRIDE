@@ -427,7 +427,7 @@ var OVERRIDE_UI = (function () {
     for (i = 0; i < N; i++) dots += '<span class="dot" id="dot' + i + '"></span>';
     var h =
       '<canvas id="rain"></canvas><div id="vignette"></div><div id="scan"></div>' +
-      '<div id="stage"><div id="panel">' +
+      '<div id="stage"><div id="stagecell"><div id="panel">' +
       '<div id="topbar"><span id="clock"></span><span class="brand">OVERRIDE // WAKE PROTOCOL &nbsp;[ ' + env.label + ' ]</span></div>' +
       '<div id="body"><div id="quiz">' +
       '<h1>IDENTITY VERIFICATION</h1>' +
@@ -439,7 +439,7 @@ var OVERRIDE_UI = (function () {
       '<div id="hint"></div><div id="msg">&nbsp;</div>' +
       '</div>' +
       '<div id="done"><h1>&#10003; ACCESS GRANTED</h1><div id="quote"></div><div id="stats"></div></div>' +
-      '</div></div></div>' +
+      '</div></div></div></div>' +
       '<div id="err"><div class="bar"><span id="errTitle">Script Error</span><span class="x" id="errX">x</span></div>' +
       '<div class="body"><div class="ico">&#9888;</div><div id="errMsg">An error has occurred.</div>' +
       '<table><tr><td>Line:</td><td id="errLine">404</td></tr><tr><td>Char:</td><td>3</td></tr><tr><td>Code:</td><td>0xDEADBED</td></tr></table>' +
