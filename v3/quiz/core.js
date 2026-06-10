@@ -427,7 +427,7 @@ var OVERRIDE_UI = (function () {
     for (i = 0; i < N; i++) dots += '<span class="dot" id="dot' + i + '"></span>';
     var h =
       '<canvas id="rain"></canvas><div id="vignette"></div><div id="scan"></div>' +
-      '<div id="stage"><div id="stagecell"><div id="panel">' +
+      '<div id="stage"><div id="panel">' +
       '<div id="topbar"><span id="clock"></span><span class="brand">OVERRIDE // WAKE PROTOCOL &nbsp;[ ' + env.label + ' ]</span></div>' +
       '<div id="body"><div id="quiz">' +
       '<h1>IDENTITY VERIFICATION</h1>' +
@@ -439,7 +439,7 @@ var OVERRIDE_UI = (function () {
       '<div id="hint"></div><div id="msg">&nbsp;</div>' +
       '</div>' +
       '<div id="done"><h1>&#10003; ACCESS GRANTED</h1><div id="quote"></div><div id="stats"></div></div>' +
-      '</div></div></div></div>' +
+      '</div></div></div>' +
       '<div id="err"><div class="bar"><span id="errTitle">Script Error</span><span class="x" id="errX">x</span></div>' +
       '<div class="body"><div class="ico">&#9888;</div><div id="errMsg">An error has occurred.</div>' +
       '<table><tr><td>Line:</td><td id="errLine">404</td></tr><tr><td>Char:</td><td>3</td></tr><tr><td>Code:</td><td>0xDEADBED</td></tr></table>' +
@@ -473,6 +473,7 @@ var OVERRIDE_UI = (function () {
     el('ans').value = ""; el('ans').className = "";
     revealText(Q.q);
     refreshProg();
+    centerPanel();
     try { el('ans').focus(); } catch (e) { }
   }
 
@@ -489,6 +490,21 @@ var OVERRIDE_UI = (function () {
       t.innerHTML = s;
       if (steps >= total) { clearInterval(revealTimer); revealTimer = null; t.innerHTML = txt; }
     }, 42);
+  }
+
+  /* vertical centring in JS — mshta's IE11 engine ignores transform/flex and collapses
+     injected table-cells, so CSS-only centring fails there (bug museum #16) */
+  function centerPanel() {
+    try {
+      var p = el('panel'), ph = p.offsetHeight || 0;
+      /* viewport height: docEl in standards mode, body in quirks; never the content height */
+      var bh = document.documentElement.clientHeight || document.body.clientHeight || 0;
+      if (ph < 50 || bh < 100) return;          /* layout not settled yet — next call fixes it */
+      var m = Math.floor((bh - ph) / 2); if (m < 12) m = 12;
+      /* relative offset, NOT margin-top: a top margin collapses through #stage and its
+         visual effect becomes engine-dependent */
+      p.style.position = "relative"; p.style.top = m + "px";
+    } catch (e) { }
   }
 
   function refreshProg() {
@@ -538,6 +554,7 @@ var OVERRIDE_UI = (function () {
     refreshProg();
     el('quiz').style.display = "none";
     el('done').style.display = "block";
+    centerPanel();
     var quote = C.LINES.victoryQuote;
     el('quote').innerHTML = quote;
     var secs = Math.round(((new Date()).getTime() - started) / 1000);
@@ -602,7 +619,9 @@ var OVERRIDE_UI = (function () {
     if (env.matrixRain) { startRain(); }
     if (env.deadlineMs) { tickClock(); setInterval(tickClock, 1000); }
     setInterval(watchEngine, 1500);
+    window.onresize = centerPanel;
     newQuestion();
+    setTimeout(centerPanel, 60);     /* once more after first layout settles */
     setTimeout(showErr, 900);     /* greet them with a "scary" error */
   }
 

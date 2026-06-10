@@ -4,8 +4,12 @@
 <!DOCTYPE html>
 <html>
 <head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <title>OVERRIDE // identity check</title>
+<!-- The X-UA-Compatible meta is LOAD-BEARING: without it mshta renders in quirks mode
+     (documentElement.clientWidth=0, auto-margins don't centre -> panel wanders). -->
+
 <!-- NOTE (do not "fix" by re-adding <link rel=stylesheet>): mshta silently DROPS an
      external stylesheet here AND re-parses the head, which also discards the
      HTA:APPLICATION window settings -> white titlebar'd window (bug museum #15).

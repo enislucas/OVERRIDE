@@ -15,12 +15,11 @@ html,body{height:100%;margin:0;background:#000;overflow:hidden;
 #rain{position:fixed;top:0;left:0;z-index:0;}   /* canvas, only active when matrixRain on */
 
 /* ---- main terminal panel ----
-   Centred via display:table/table-cell — the ONE centring method mshta's IE11 engine
-   honors. Do NOT use transform or flexbox here: IE11 ignores them and dumps the panel
-   in a corner (bug museum #16). */
-#stage{position:relative;z-index:5;display:table;width:100%;height:100%;}
-#stagecell{display:table-cell;vertical-align:middle;text-align:center;}
-#panel{display:inline-block;text-align:left;width:880px;max-width:92%;margin:0 auto;
+   Vertical centring is done in JS (centerPanel in core.js): mshta's IE11 engine ignores
+   transform/flex AND collapses dynamically-injected table-cells (bug museum #16), so
+   CSS-only centring is unreliable there. CSS only centres horizontally. */
+#stage{position:relative;z-index:5;width:100%;height:100%;}
+#panel{width:880px;max-width:92%;margin:0 auto;
   padding:0 0 26px;background:rgba(0,14,5,0.92);border:1px solid #00ff66;border-radius:12px;
   box-shadow:0 0 60px rgba(0,255,102,0.28), 0 0 120px rgba(0,255,102,0.10), inset 0 0 60px rgba(0,255,102,0.06);}
 #topbar{padding:12px 22px;border-bottom:1px solid rgba(0,255,102,0.35);
