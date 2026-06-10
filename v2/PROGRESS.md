@@ -1,5 +1,10 @@
 # OVERRIDE — progress / resume guide
 
+> **STATUS 2026-06-10: superseded by v3.** The cross-platform v3 rebuild lives in `v3/`
+> (12 subjects, narrator, shared quiz core, Mac/Linux engines) — see `v3/README.md` and
+> `v3/MAINTENANCE.md`. The live daily 04:15 alarm still runs on v2's `OVERRIDE_V2_a0c494a`
+> task until the user deploys from the v3 panel (which imports this config automatically).
+
 > **STATUS (superseded):** the clean **v2 / config v3** rebuild has shipped — see `v2/README.md`
 > for the authoritative description. The "tonight's OVERRIDE_LIVE_* alarms" sections below are
 > historical: those one-time alarms have fired and their tasks were removed. The current app uses

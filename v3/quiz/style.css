@@ -1,0 +1,90 @@
+/* OVERRIDE v3 // shared quiz stylesheet
+   Works in mshta (IE11 engine) AND modern browsers (Edge/Chrome/Safari/Firefox).
+   Rules: no CSS variables, no grid (IE11). Ambient effects are STATIC (gradients,
+   shadows) or tiny keyframe animations on small elements -> near-zero CPU.       */
+
+html,body{height:100%;margin:0;background:#000;overflow:hidden;
+  font-family:Consolas,"Lucida Console",Menlo,Monaco,monospace;color:#00ff66;
+  cursor:default;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;}
+
+/* ---- ambient layers (static = free) ---- */
+#vignette{position:fixed;top:0;left:0;width:100%;height:100%;z-index:1;pointer-events:none;
+  background:radial-gradient(ellipse at center, rgba(0,30,12,0.20) 0%, rgba(0,0,0,0.0) 45%, rgba(0,0,0,0.55) 100%);}
+#scan{position:fixed;top:0;left:0;width:100%;height:100%;z-index:2;pointer-events:none;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0,rgba(0,0,0,0.20) 2px,rgba(0,0,0,0) 3px);}
+#rain{position:fixed;top:0;left:0;z-index:0;}   /* canvas, only active when matrixRain on */
+
+/* ---- main terminal panel ---- */
+#stage{position:relative;z-index:5;width:100%;height:100%;}
+#panel{position:relative;max-width:860px;margin:4% auto 0;padding:0 0 26px;
+  background:rgba(0,12,4,0.88);border:1px solid #00ff66;border-radius:10px;
+  box-shadow:0 0 34px rgba(0,255,102,0.30), inset 0 0 40px rgba(0,255,102,0.05);}
+#topbar{padding:12px 22px;border-bottom:1px solid rgba(0,255,102,0.35);
+  background:rgba(0,255,102,0.06);border-radius:10px 10px 0 0;}
+.brand{font-size:13px;letter-spacing:3px;color:#0f8;opacity:.9;}
+#clock{float:right;font-size:20px;font-weight:bold;color:#7CFFB0;letter-spacing:2px;
+  text-shadow:0 0 8px rgba(0,255,102,.5);}
+#clock.low{color:#ff3b3b;text-shadow:0 0 10px #f00;animation:pulse 1s infinite;}
+
+#body{padding:18px 30px 0;}
+h1{font-size:30px;margin:8px 0 2px;text-shadow:0 0 12px #00ff66;letter-spacing:1px;}
+.sub{font-size:14px;color:#7CFFB0;margin-bottom:14px;}
+
+/* progress dots */
+#prog{margin:10px 0 18px;font-size:13px;letter-spacing:2px;color:#0a7;}
+.dot{display:inline-block;width:34px;height:8px;margin-right:8px;background:#03200f;
+  border:1px solid #0a5;border-radius:4px;vertical-align:middle;}
+.dot.on{background:#00ff66;box-shadow:0 0 10px rgba(0,255,102,.8);}
+.dot.cur{border-color:#00ff88;box-shadow:0 0 6px rgba(0,255,102,.5);}
+
+/* the live question */
+.cat{font-size:12px;letter-spacing:3px;color:#0a7;margin-bottom:6px;}
+#qtext{font-size:32px;min-height:46px;color:#aeffd2;text-shadow:0 0 10px rgba(0,255,102,.55);margin-bottom:16px;}
+#ansrow{margin:6px 0 4px;}
+input#ans{font-size:26px;width:420px;padding:9px 12px;background:#001a0a;color:#aeffd2;
+  border:2px solid #0a5;border-radius:8px;outline:none;font-family:Consolas,Menlo,monospace;
+  text-shadow:0 0 6px #0f8;}
+input#ans:focus{border-color:#00ff88;box-shadow:0 0 14px rgba(0,255,102,.7);}
+input#ans.ok{border-color:#00ff88;box-shadow:0 0 18px rgba(0,255,102,.95);}
+input#ans.bad{border-color:#ff3b3b;box-shadow:0 0 14px rgba(255,30,30,.8);}
+#go{font-size:19px;letter-spacing:2px;padding:11px 30px;margin-left:14px;cursor:pointer;
+  background:#00210f;color:#00ff88;border:2px solid #00ff66;border-radius:8px;text-shadow:0 0 8px #0f8;
+  font-family:Consolas,Menlo,monospace;vertical-align:middle;}
+#go:hover{background:#00ff66;color:#001b0b;}
+#hint{font-size:12px;color:#4f9f74;margin-top:10px;min-height:16px;}
+#msg{margin-top:12px;font-size:18px;min-height:24px;}
+.bad{color:#ff3b3b;text-shadow:0 0 10px #f00;}
+.good{color:#00ff88;text-shadow:0 0 10px #0f6;}
+.blink{animation:bl 1s steps(1) infinite;}
+
+/* victory */
+#done{display:none;text-align:center;padding:30px 30px 10px;}
+#done h1{font-size:54px;color:#00ff88;}
+#quote{font-size:21px;color:#aeffd2;margin:14px 0 6px;line-height:1.5;}
+#stats{font-size:13px;color:#4f9f74;margin-top:14px;}
+
+/* ended-by-engine overlay (browser mode) */
+#ended{display:none;position:fixed;z-index:80;top:0;left:0;width:100%;height:100%;background:#000;
+  text-align:center;color:#0a7;font-size:22px;padding-top:20%;}
+
+/* shake on wrong answer */
+.shake{animation:shake .38s linear;}
+@keyframes shake{0%,100%{margin-left:auto;}
+  10%{transform:translate(-9px,2px) }30%{transform:translate(8px,-3px) }
+  50%{transform:translate(-7px,1px) }70%{transform:translate(6px,-2px) }90%{transform:translate(-3px,1px)}}
+@keyframes bl{50%{opacity:0;}}
+@keyframes pulse{50%{opacity:.45;}}
+
+/* ---- fake OS error dialog (the prank) ---- */
+#err{display:none;position:fixed;z-index:50;top:26%;left:50%;width:470px;margin-left:-235px;
+  background:#f0f0f0;color:#000;border:1px solid #777;border-radius:3px;
+  box-shadow:0 12px 44px rgba(0,0,0,0.75);font-family:Tahoma,"Segoe UI",sans-serif;}
+#err .bar{background:#d8d8d8;padding:6px 10px;font-size:13px;border-bottom:1px solid #bbb;}
+#err .bar .x{float:right;cursor:pointer;color:#444;font-weight:bold;padding:0 4px;}
+#err .body{padding:16px 18px;font-size:13px;}
+#err .ico{float:left;font-size:34px;color:#d33;margin:0 14px 10px 0;line-height:1;}
+#err table{font-size:12px;margin:6px 0 10px 48px;color:#222;border-collapse:collapse;}
+#err td{padding:1px 6px;}
+#err .foot{text-align:center;padding:0 0 14px;}
+#err button{font-family:Tahoma,sans-serif;font-size:12px;padding:4px 18px;margin:0 5px;
+  border:1px solid #888;border-radius:3px;background:#e9e9e9;cursor:pointer;}
