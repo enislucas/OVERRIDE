@@ -1,0 +1,219 @@
+/* OVERRIDE v4 // themed quiz stylesheet
+   One file, four themes: html.t-green / .t-red / .t-cyber / .t-crt
+   Rules: no CSS variables (mshta fallback must render), explicit colors per theme.
+   Ambient layers are static (free); animations are short bursts or tiny elements.
+   Modern extras (clip-path slicing) live inside @supports so IE degrades gracefully. */
+
+/* ================= base layout (theme-independent) ================= */
+html,body{height:100%;margin:0;background:#000;overflow:hidden;
+  font-family:"Cascadia Mono",Consolas,"Lucida Console",Menlo,monospace;
+  cursor:default;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;}
+#rain{position:fixed;top:0;left:0;z-index:0;}
+#vignette{position:fixed;top:0;left:0;width:100%;height:100%;z-index:1;pointer-events:none;}
+#scan{position:fixed;top:0;left:0;width:100%;height:100%;z-index:2;pointer-events:none;}
+#flash{position:fixed;top:0;left:0;width:100%;height:100%;z-index:40;pointer-events:none;opacity:0;}
+#flash.on{opacity:1;transition:opacity .05s;}
+#crtwrap{position:relative;width:100%;height:100%;z-index:5;}
+#stage{position:relative;width:100%;height:100%;}
+#panel{width:880px;max-width:92%;margin:0 auto;padding:0 0 26px;border-radius:12px;}
+#topbar{padding:12px 22px;border-radius:12px 12px 0 0;font-size:13px;letter-spacing:3px;}
+#clock{float:right;font-size:20px;font-weight:bold;letter-spacing:2px;}
+#clock.low{animation:pulse 1s infinite;}
+#body{padding:18px 30px 0;}
+h1{font-size:30px;margin:8px 0 2px;letter-spacing:1px;}
+.sub{font-size:14px;margin-bottom:14px;}
+#prog{margin:10px 0 18px;font-size:13px;letter-spacing:2px;}
+.dot{display:inline-block;width:34px;height:8px;margin-right:8px;border-radius:4px;vertical-align:middle;border:1px solid transparent;}
+.cat{font-size:12px;letter-spacing:3px;margin-bottom:6px;}
+#qtext{font-size:32px;min-height:46px;margin-bottom:16px;position:relative;}
+#ansrow{margin:6px 0 4px;}
+input#ans{font-size:26px;width:420px;padding:9px 12px;border-radius:8px;outline:none;
+  font-family:"Cascadia Mono",Consolas,Menlo,monospace;border:2px solid transparent;}
+#go{font-size:19px;letter-spacing:2px;padding:11px 30px;margin-left:14px;cursor:pointer;border-radius:8px;
+  font-family:"Cascadia Mono",Consolas,Menlo,monospace;vertical-align:middle;border:2px solid transparent;}
+#hint{font-size:12px;margin-top:10px;min-height:16px;}
+#msg{margin-top:12px;font-size:18px;min-height:24px;}
+#done{display:none;text-align:center;padding:30px 30px 10px;}
+#done h1{font-size:54px;position:relative;}
+#quote{font-size:21px;margin:14px 0 6px;line-height:1.5;min-height:32px;}
+#stats{font-size:13px;margin-top:14px;}
+#stamp{font-size:15px;letter-spacing:4px;margin-top:18px;font-weight:bold;}
+#ended{display:none;position:fixed;z-index:80;top:0;left:0;width:100%;height:100%;background:#000;
+  text-align:center;font-size:22px;padding-top:20%;}
+.blink{animation:bl 1s steps(1) infinite;}
+.shake{animation:shake .38s linear;}
+@keyframes shake{10%{transform:translate(-9px,2px)}30%{transform:translate(8px,-3px)}
+  50%{transform:translate(-7px,1px)}70%{transform:translate(6px,-2px)}90%{transform:translate(-3px,1px)}}
+@keyframes bl{50%{opacity:0;}}
+@keyframes pulse{50%{opacity:.45;}}
+
+/* glitch burst: basic (all engines) = chromatic text-shadow jitter */
+.gl{animation:glshift .12s steps(2) 4;}
+@keyframes glshift{0%{text-shadow:3px 0 rgba(255,0,80,.8),-3px 0 rgba(0,255,255,.8);}
+  50%{text-shadow:-4px 0 rgba(255,0,80,.8),4px 0 rgba(0,255,255,.8);}
+  100%{text-shadow:2px 0 rgba(255,0,80,.8),-2px 0 rgba(0,255,255,.8);}}
+/* glitch burst: full RGB slice tear (modern engines only) */
+@supports (clip-path: inset(0)) {
+  .gl::before,.gl::after{content:attr(data-text);position:absolute;left:0;top:0;width:100%;overflow:hidden;}
+  .gl::before{color:#f0f;transform:translate(-4px,-2px);clip-path:inset(10% 0 62% 0);animation:glA .14s steps(2) 3;}
+  .gl::after{color:#0ff;transform:translate(4px,2px);clip-path:inset(60% 0 14% 0);animation:glB .14s steps(2) 3;}
+  @keyframes glA{50%{clip-path:inset(34% 0 40% 0);transform:translate(5px,1px);}}
+  @keyframes glB{50%{clip-path:inset(8% 0 74% 0);transform:translate(-5px,-1px);}}
+}
+
+/* fake OS error dialog (deliberately NOT themed — that's the joke) */
+#err{display:none;position:fixed;z-index:50;top:26%;left:50%;width:470px;margin-left:-235px;
+  background:#f0f0f0;color:#000;border:1px solid #777;border-radius:3px;
+  box-shadow:0 12px 44px rgba(0,0,0,0.75);font-family:Tahoma,"Segoe UI",sans-serif;}
+#err .bar{background:#d8d8d8;padding:6px 10px;font-size:13px;border-bottom:1px solid #bbb;}
+#err .bar .x{float:right;cursor:pointer;color:#444;font-weight:bold;padding:0 4px;}
+#err .body{padding:16px 18px;font-size:13px;}
+#err .ico{float:left;font-size:34px;color:#d33;margin:0 14px 10px 0;line-height:1;}
+#err table{font-size:12px;margin:6px 0 10px 48px;color:#222;border-collapse:collapse;}
+#err td{padding:1px 6px;}
+#err .foot{text-align:center;padding:0 0 14px;}
+#err button{font-family:Tahoma,sans-serif;font-size:12px;padding:4px 18px;margin:0 5px;
+  border:1px solid #888;border-radius:3px;background:#e9e9e9;cursor:pointer;}
+
+/* ================= THEME: green (phosphor classic) ================= */
+.t-green body,.t-green #ended{color:#00ff66;}
+.t-green #vignette{background:radial-gradient(ellipse at center,rgba(0,30,12,0.20) 0%,rgba(0,0,0,0) 45%,rgba(0,0,0,0.55) 100%);}
+.t-green #scan{background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0,rgba(0,0,0,0.20) 2px,rgba(0,0,0,0) 3px);}
+.t-green #flash.on{background:rgba(255,0,0,.10);}
+.t-green #panel{background:rgba(0,14,5,0.92);border:1px solid #00ff66;
+  box-shadow:0 0 60px rgba(0,255,102,0.28),0 0 120px rgba(0,255,102,0.10),inset 0 0 60px rgba(0,255,102,0.06);}
+.t-green #topbar{border-bottom:1px solid rgba(0,255,102,0.35);background:rgba(0,255,102,0.06);}
+.t-green .brand{color:#0f8;}
+.t-green #clock{color:#7CFFB0;text-shadow:0 0 8px rgba(0,255,102,.5);}
+.t-green #clock.low{color:#ff3b3b;text-shadow:0 0 10px #f00;}
+.t-green h1{color:#00ff66;text-shadow:0 0 12px #00ff66;}
+.t-green .sub{color:#7CFFB0;}
+.t-green #prog{color:#0a7;}
+.t-green .dot{background:#03200f;border-color:#0a5;}
+.t-green .dot.on{background:#00ff66;box-shadow:0 0 10px rgba(0,255,102,.8);}
+.t-green .dot.cur{border-color:#00ff88;box-shadow:0 0 6px rgba(0,255,102,.5);}
+.t-green .cat{color:#0a7;}
+.t-green #qtext{color:#aeffd2;text-shadow:0 0 10px rgba(0,255,102,.55);}
+.t-green input#ans{background:#001a0a;color:#aeffd2;border-color:#0a5;text-shadow:0 0 6px #0f8;}
+.t-green input#ans:focus{border-color:#00ff88;box-shadow:0 0 14px rgba(0,255,102,.7);}
+.t-green input#ans.ok{border-color:#00ff88;box-shadow:0 0 18px rgba(0,255,102,.95);}
+.t-green input#ans.bad{border-color:#ff3b3b;box-shadow:0 0 14px rgba(255,30,30,.8);}
+.t-green #go{background:#00210f;color:#00ff88;border-color:#00ff66;text-shadow:0 0 8px #0f8;}
+.t-green #go:hover{background:#00ff66;color:#001b0b;}
+.t-green #hint{color:#4f9f74;}
+.t-green .bad{color:#ff3b3b;text-shadow:0 0 10px #f00;}
+.t-green .good{color:#00ff88;text-shadow:0 0 10px #0f6;}
+.t-green #done h1{color:#00ff88;}
+.t-green #quote{color:#aeffd2;}
+.t-green #stats{color:#4f9f74;}
+.t-green #stamp{color:#00ff66;text-shadow:0 0 12px rgba(0,255,102,.8);}
+
+/* ================= THEME: red (alert / containment) ================= */
+.t-red body,.t-red #ended{color:#ff2233;}
+.t-red #vignette{background:radial-gradient(ellipse at center,rgba(80,0,0,0.30) 0%,rgba(0,0,0,0) 50%,rgba(0,0,0,0.70) 100%);}
+.t-red #scan{background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0,rgba(0,0,0,0.22) 2px,rgba(0,0,0,0) 3px);}
+.t-red #flash.on{background:rgba(255,0,0,.16);}
+.t-red #panel{background:rgba(20,0,2,0.93);border:1px solid #ff2233;border-radius:4px;
+  box-shadow:0 0 60px rgba(255,34,51,0.32),inset 0 0 60px rgba(255,34,51,0.06);}
+.t-red #topbar{border-bottom:1px solid rgba(255,34,51,0.5);background:rgba(255,34,51,0.08);border-radius:4px 4px 0 0;
+  background-image:repeating-linear-gradient(135deg,rgba(255,34,51,.18) 0 16px,rgba(0,0,0,0) 16px 32px);}
+.t-red .brand{color:#ff6b75;}
+.t-red #clock{color:#ff2233;text-shadow:0 0 12px #f00;animation:pulse 1.2s infinite;}
+.t-red h1{color:#ff2233;text-shadow:0 0 14px rgba(255,0,0,.8);}
+.t-red .sub{color:#ff8d94;}
+.t-red #prog{color:#b04a52;}
+.t-red .dot{background:#1d0003;border-color:#7a1018;border-radius:0;}
+.t-red .dot.on{background:#ff2233;box-shadow:0 0 12px rgba(255,34,51,.9);}
+.t-red .dot.cur{border-color:#ff6b75;}
+.t-red .cat{color:#b04a52;}
+.t-red #qtext{color:#ffd6d9;text-shadow:0 0 10px rgba(255,34,51,.6);}
+.t-red input#ans{background:#170003;color:#ffd6d9;border-color:#7a1018;border-radius:0;}
+.t-red input#ans:focus{border-color:#ff2233;box-shadow:0 0 14px rgba(255,34,51,.7);}
+.t-red input#ans.ok{border-color:#7CFFB0;box-shadow:0 0 16px rgba(0,255,102,.8);}
+.t-red input#ans.bad{border-color:#fff;box-shadow:0 0 16px rgba(255,255,255,.8);}
+.t-red #go{background:#240007;color:#ff2233;border-color:#ff2233;border-radius:0;text-shadow:0 0 8px rgba(255,0,0,.7);}
+.t-red #go:hover{background:#ff2233;color:#140002;}
+.t-red #hint{color:#8a3a40;}
+.t-red .bad{color:#fff;text-shadow:0 0 10px #f55;}
+.t-red .good{color:#7CFFB0;text-shadow:0 0 10px #0f6;}
+.t-red #done h1{color:#7CFFB0;}
+.t-red #quote{color:#ffd6d9;}
+.t-red #stats{color:#8a3a40;}
+.t-red #stamp{color:#ff2233;text-shadow:0 0 12px rgba(255,34,51,.8);}
+
+/* ================= THEME: cyber (neon cyan/magenta) ================= */
+.t-cyber body,.t-cyber #ended{color:#0ff;}
+.t-cyber #vignette{background:radial-gradient(ellipse at center,rgba(0,0,0,0) 40%,rgba(0,0,0,0.8) 100%);}
+.t-cyber #scan{background:linear-gradient(rgba(0,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,255,.05) 1px,transparent 1px);background-size:44px 44px;}
+.t-cyber #flash.on{background:rgba(255,0,255,.13);}
+.t-cyber #panel{background:rgba(6,4,20,0.94);border:1px solid #0ff;border-radius:0;
+  box-shadow:0 0 60px rgba(0,255,255,0.25),0 0 120px rgba(255,0,255,0.12);}
+.t-cyber #topbar{border-bottom:1px solid rgba(0,255,255,0.4);border-radius:0;
+  background:linear-gradient(90deg,rgba(0,255,255,.12),rgba(255,0,255,.10));}
+.t-cyber .brand{color:#0ff;}
+.t-cyber #clock{color:#f0f;text-shadow:0 0 12px rgba(255,0,255,.8);}
+.t-cyber h1{color:#fff;text-shadow:2px 0 #f0f,-2px 0 #0ff,0 0 18px rgba(0,255,255,.5);}
+.t-cyber .sub{color:#7ee6e6;}
+.t-cyber #prog{color:#08a;}
+.t-cyber .dot{background:#0a0a26;border-color:#066;border-radius:0;transform:skewX(-22deg);}
+.t-cyber .dot.on{background:#0ff;box-shadow:0 0 14px rgba(0,255,255,.9);}
+.t-cyber .dot.cur{border-color:#f0f;box-shadow:0 0 10px rgba(255,0,255,.7);}
+.t-cyber .cat{color:#f0f;}
+.t-cyber #qtext{color:#eafcff;text-shadow:0 0 14px rgba(0,255,255,.7);}
+.t-cyber input#ans{background:#070718;color:#eafcff;border-color:#088;border-radius:0;}
+.t-cyber input#ans:focus{border-color:#0ff;box-shadow:0 0 14px rgba(0,255,255,.7);}
+.t-cyber input#ans.ok{border-color:#0f6;box-shadow:0 0 16px rgba(0,255,102,.8);}
+.t-cyber input#ans.bad{border-color:#f0f;box-shadow:0 0 16px rgba(255,0,255,.8);}
+.t-cyber #go{background:#0a0a26;color:#0ff;border-color:#0ff;border-radius:0;text-shadow:0 0 10px rgba(0,255,255,.8);}
+.t-cyber #go:hover{background:#0ff;color:#03020a;}
+.t-cyber #hint{color:#3d7d8a;}
+.t-cyber .bad{color:#f0f;text-shadow:0 0 10px rgba(255,0,255,.8);}
+.t-cyber .good{color:#0f6;text-shadow:0 0 10px #0f6;}
+.t-cyber #done h1{color:#fff;text-shadow:2px 0 #f0f,-2px 0 #0ff,0 0 22px rgba(0,255,255,.6);}
+.t-cyber #quote{color:#eafcff;}
+.t-cyber #stats{color:#3d7d8a;}
+.t-cyber #stamp{color:#f0f;text-shadow:0 0 12px rgba(255,0,255,.8);}
+
+/* ================= THEME: crt (deep CRT monitor sim) ================= */
+.t-crt body,.t-crt #ended{color:#2cff8c;}
+.t-crt #crtwrap{position:fixed;top:14px;left:14px;right:14px;bottom:14px;width:auto;height:auto;
+  border-radius:48px/38px;overflow:hidden;background:#020a04;
+  box-shadow:inset 0 0 120px rgba(0,0,0,.95),inset 0 0 40px rgba(0,80,30,.4),0 0 30px rgba(0,255,102,.15);}
+.t-crt #vignette{background:radial-gradient(ellipse at center,rgba(0,255,102,.08) 0%,rgba(0,0,0,0) 55%,rgba(0,0,0,.85) 100%);}
+.t-crt #scan{background:repeating-linear-gradient(0deg,rgba(0,0,0,.32) 0 2px,rgba(0,0,0,0) 2px 5px);z-index:30;}
+.t-crt #flash.on{background:rgba(255,30,30,.14);}
+.t-crt #panel{background:rgba(0,0,0,0);border:none;box-shadow:none;width:880px;}
+.t-crt #topbar{border-bottom:1px solid rgba(0,255,102,.3);background:none;}
+.t-crt .brand{color:#19c97a;text-shadow:1px 0 rgba(255,60,60,.45),-1px 0 rgba(60,120,255,.45),0 0 10px rgba(0,255,102,.8);}
+.t-crt #clock{color:#7CFFB0;text-shadow:1px 0 rgba(255,60,60,.5),-1px 0 rgba(60,120,255,.5),0 0 12px #0f8;}
+.t-crt #clock.low{color:#ff5b5b;}
+.t-crt h1{color:#2cff8c;font-size:38px;letter-spacing:2px;
+  text-shadow:1.5px 0 rgba(255,60,60,.55),-1.5px 0 rgba(60,120,255,.55),0 0 22px rgba(0,255,102,.9),0 0 60px rgba(0,255,102,.4);}
+.t-crt .sub{color:#19c97a;text-shadow:0 0 8px rgba(0,255,102,.6);}
+.t-crt #prog{color:#0f9460;text-shadow:0 0 6px rgba(0,255,102,.5);}
+.t-crt .dot{background:#03200f;border-color:#0f9460;}
+.t-crt .dot.on{background:#2cff8c;box-shadow:0 0 12px rgba(0,255,102,.9);}
+.t-crt .dot.cur{border-color:#2cff8c;}
+.t-crt .cat{color:#0f9460;text-shadow:0 0 6px rgba(0,255,102,.5);}
+.t-crt #qtext{color:#b8ffd9;font-size:36px;
+  text-shadow:1.5px 0 rgba(255,60,60,.5),-1.5px 0 rgba(60,120,255,.5),0 0 18px rgba(0,255,102,.8);}
+.t-crt input#ans{background:rgba(0,30,12,.5);color:#b8ffd9;border-color:#0f9460;border-radius:0;
+  text-shadow:0 0 10px rgba(0,255,102,.7);}
+.t-crt input#ans:focus{border-color:#2cff8c;box-shadow:0 0 16px rgba(0,255,102,.6);}
+.t-crt input#ans.ok{border-color:#2cff8c;box-shadow:0 0 18px rgba(0,255,102,.9);}
+.t-crt input#ans.bad{border-color:#ff5b5b;box-shadow:0 0 14px rgba(255,40,40,.8);}
+.t-crt #go{background:rgba(0,30,12,.6);color:#2cff8c;border-color:#0f9460;border-radius:0;
+  text-shadow:0 0 10px rgba(0,255,102,.8);}
+.t-crt #go:hover{background:#2cff8c;color:#020a04;}
+.t-crt #hint{color:#0f9460;}
+.t-crt .bad{color:#ff5b5b;text-shadow:0 0 10px #f00;}
+.t-crt .good{color:#2cff8c;text-shadow:0 0 10px #0f6;}
+.t-crt #done h1{color:#2cff8c;}
+.t-crt #quote{color:#b8ffd9;text-shadow:0 0 10px rgba(0,255,102,.6);}
+.t-crt #stats{color:#0f9460;}
+.t-crt #stamp{color:#2cff8c;text-shadow:0 0 14px rgba(0,255,102,.9);}
+/* faint CRT flicker — tiny opacity oscillation on the glow layer only (cheap) */
+@supports (clip-path: inset(0)) {
+  .t-crt #vignette{animation:crtflick 4s infinite;}
+  @keyframes crtflick{0%,93%,100%{opacity:1;}94%{opacity:.82;}95%{opacity:.96;}97%{opacity:.88;}}
+}

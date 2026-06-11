@@ -1,0 +1,35 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>B</title><style>
+html,body{height:100%;margin:0;background:#0a0500;font-family:"Cascadia Mono",Consolas,monospace;overflow:hidden}
+#vig{position:fixed;inset:0;background:radial-gradient(ellipse at center,rgba(60,35,0,.30) 0%,transparent 50%,rgba(0,0,0,.7) 100%);pointer-events:none}
+#scan{position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent 0,rgba(0,0,0,.25) 2px,transparent 4px);pointer-events:none}
+.wrap{display:flex;align-items:center;justify-content:center;height:100%}
+.panel{width:900px;background:rgba(20,10,0,.95);border:2px solid #FFB000;border-radius:4px;
+ box-shadow:0 0 60px rgba(255,176,0,.25),inset 0 0 80px rgba(255,176,0,.05);padding-bottom:30px}
+.top{padding:14px 26px;border-bottom:2px solid rgba(255,176,0,.5);font-size:13px;letter-spacing:3px;color:#FFB000;background:rgba(255,176,0,.08)}
+.clock{float:right;font-size:22px;font-weight:bold;color:#ffd470;text-shadow:0 0 12px rgba(255,176,0,.8)}
+.body{padding:24px 34px 0}
+h1{font-size:34px;color:#FFB000;text-shadow:0 0 16px rgba(255,176,0,.7);margin:6px 0;letter-spacing:2px}
+.sub{font-size:14px;color:#d9a44a;margin-bottom:18px}
+.dots span{display:inline-block;width:40px;height:9px;margin-right:9px;border:1px solid #8a5d00;background:#1d1200;vertical-align:middle}
+.dots .on{background:#FFB000;box-shadow:0 0 12px rgba(255,176,0,.9)}
+.ptxt{font-size:13px;letter-spacing:2px;color:#a87d2a;margin-left:10px}
+.cat{font-size:12px;letter-spacing:4px;color:#a87d2a;margin:22px 0 8px}
+.q{font-size:38px;color:#ffd470;text-shadow:0 0 12px rgba(255,176,0,.6);margin-bottom:20px}
+input{font-size:28px;width:440px;padding:10px 14px;background:#170d00;color:#ffd470;border:2px solid #8a5d00;outline:none;font-family:inherit}
+button{font-size:20px;letter-spacing:2px;padding:12px 34px;margin-left:16px;background:#241500;color:#FFB000;border:2px solid #FFB000;font-family:inherit;text-shadow:0 0 8px rgba(255,176,0,.7)}
+.hint{font-size:12px;color:#8a6a33;margin-top:12px}
+.blink{animation:bl 1s steps(1) infinite}@keyframes bl{50%{opacity:0}}
+</style></head><body>
+<div id="vig"></div><div id="scan"></div>
+<div class="wrap"><div class="panel">
+<div class="top"><span class="clock">02:41</span>OVERRIDE // WAKE PROTOCOL &nbsp;[ WAKE UP ]</div>
+<div class="body">
+<h1>IDENTITY VERIFICATION</h1>
+<div class="sub">Answer each question to prove consciousness and disable the alarm.<span class="blink">_</span></div>
+<div class="dots"><span class="on"></span><span></span><span></span><span class="ptxt">VERIFIED 1 / 3</span></div>
+<div class="cat">ARITHMETIC</div>
+<div class="q">47 &#215; 28 =</div>
+<div><input value="131"><button>&gt; SUBMIT</button></div>
+<div class="hint">number / expression, e.g. 12x^3-10x+2</div>
+</div></div></div>
+</body></html>

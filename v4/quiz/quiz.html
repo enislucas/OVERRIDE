@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OVERRIDE // identity check</title>
+<link rel="stylesheet" type="text/css" href="style.css" />
+<script type="text/javascript" src="core.js"></script>
+<script type="text/javascript">
+/* OVERRIDE v4 // browser shell — PRIMARY renderer on every OS (Edge kiosk on Windows).
+   Config arrives in the query string; SOLVED + heartbeat go to the ring engine's
+   localhost listener via image beacons (no CORS needed from file:// pages).
+   ?key=..&port=8741&label=..&n=3&diff=hard&cats=a,b&rain=1&deadline=<ms>&theme=crt&user=Enis */
+var BEAT_FAILS = 0, PAGE_START = new Date().getTime();
+
+function qs(name){
+  var m = location.search.match(new RegExp("[?&]"+name+"=([^&]*)"));
+  return m ? decodeURIComponent(m[1].replace(/\+/g," ")) : "";
+}
+function beacon(url){ try{ var i=new Image(); i.src=url; return i; }catch(e){ return null; } }
+
+function boot(){
+  var key=qs("key"), port=qs("port")||"8741", label=qs("label")||"SYSTEM";
+  var n=parseInt(qs("n"),10)||3, diff=qs("diff")||"hard";
+  var cats=(qs("cats")||"arithmetic").split(",");
+  var rain=(qs("rain")==="1"), deadlineMs=parseInt(qs("deadline"),10)||0;
+  var theme=qs("theme")||"green", user=qs("user")||"";
+  var base="http://127.0.0.1:"+port;
+
+  setInterval(function(){
+    var img=beacon(base+"/beat?r="+Math.random());
+    if(img){ img.onload=function(){ BEAT_FAILS=0; }; img.onerror=function(){ BEAT_FAILS++; }; }
+  }, 2000);
+
+  OVERRIDE_UI.init({
+    label: label, numQuestions: n, difficulty: diff, cats: cats,
+    matrixRain: rain, deadlineMs: deadlineMs, theme: theme, user: user,
+    speak: function(t){
+      try{
+        var u=new SpeechSynthesisUtterance(t), vs=window.speechSynthesis.getVoices();
+        if(vs && vs.length>0) u.voice=vs[Math.floor(Math.random()*vs.length)];
+        u.volume=1; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
+      }catch(e){}
+    },
+    unlock: function(){
+      var i;
+      for(i=0;i<3;i++){ setTimeout(function(){ beacon(base+"/unlock?key="+encodeURIComponent(key)); }, i*500); }
+    },
+    engineGone: function(){
+      if((new Date().getTime()-PAGE_START)<12000) return false;
+      return BEAT_FAILS>=4;
+    },
+    closeWin: function(){ try{ window.close(); }catch(e){} }
+  });
+}
+window.onload = boot;
+</script>
+</head>
+<body></body>
+</html>
