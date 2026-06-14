@@ -20,7 +20,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $script:eng = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
-$script:root = Split-Path -Parent $script:eng          # v4 root: session files + config live here
+$script:root = Split-Path -Parent $script:eng          # v5 root: session files + config live here
 $script:cfgPath = Join-Path $script:root "config.json"
 $script:quizHta  = Join-Path $script:root "quiz\quiz.hta"
 $script:quizHtml = Join-Path $script:root "quiz\quiz.html"
@@ -1046,8 +1046,8 @@ function Show-PanelGui {
 # ---- dispatch --------------------------------------------------------------
 if ($Probe)  { Set-Content -Path (Join-Path $script:root "probe.ok") -Value ((Get-Date).ToString("o")) -Encoding ASCII; return }
 if ($Unlock) { Invoke-Unlock; return }
-if ($Disarm) { Write-Host "OVERRIDE v4 // disarming..." -ForegroundColor Yellow; Remove-Alarms; return }
-if ($Arm)    { Write-Host "OVERRIDE v4 // arming..." -ForegroundColor Green; Register-Alarms; return }
+if ($Disarm) { Write-Host "OVERRIDE v5 // disarming..." -ForegroundColor Yellow; Remove-Alarms; return }
+if ($Arm)    { Write-Host "OVERRIDE v5 // arming..." -ForegroundColor Green; Register-Alarms; return }
 if ($DryRun) { Write-Host ("OVERRIDE v4 schedule  ({0})" -f (Get-Date)) -ForegroundColor Green; Show-Tasks; return }
 
 if ($Ring) {
