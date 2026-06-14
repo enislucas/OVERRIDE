@@ -43,12 +43,14 @@ public static class SoundGen {
   }
 }
 "@
-Add-Type -TypeDefinition $cs -Language CSharp
+# audit fix #24: on a locked-down .NET config Add-Type can throw. Don't abort setup — the ring
+# engine synthesizes its own fallback wav at alarm time, so silence here is recoverable.
+try { Add-Type -TypeDefinition $cs -Language CSharp } catch { Write-Warning "sound synth unavailable (Add-Type failed): $($_.Exception.Message). The ring will synthesize a fallback tone at alarm time."; return }
 
 $map = @(
   @("t1_throb.wav","throb"), @("t1_warble.wav","warble"), @("t1_klaxon.wav","klaxon"),
   @("t2_tritone.wav","tritone"), @("t2_chirp.wav","chirp"), @("t2_airraid.wav","airraid"),
   @("t3_siren.wav","siren"), @("t3_mosquito.wav","mosquito"), @("t3_accel.wav","accel"), @("t3_glitch.wav","glitch")
 )
-foreach ($m in $map) { [SoundGen]::Gen($m[1], (Join-Path $dir $m[0]), 6.0); "made $($m[0])" }
+foreach ($m in $map) { try { [SoundGen]::Gen($m[1], (Join-Path $dir $m[0]), 6.0); "made $($m[0])" } catch { Write-Warning "skip $($m[0]): $($_.Exception.Message)" } }
 "DONE -> $dir"

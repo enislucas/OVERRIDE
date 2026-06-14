@@ -29,18 +29,25 @@ if (-not (Test-Path $snd) -or @(Get-ChildItem $snd -Filter *.wav -ErrorAction Si
 }
 
 # 3) desktop shortcut -> hidden powershell opening the v5 GUI panel
+# audit fix #24: WScript.Shell COM can be disabled by policy on managed machines. Don't let a
+# failed shortcut abort setup — tell the user how to launch the app directly instead.
 $ps = (Get-Command powershell).Source
-$desktop = [Environment]::GetFolderPath("Desktop")
-$lnkPath = Join-Path $desktop "OVERRIDE.lnk"
-$wsh = New-Object -ComObject WScript.Shell
-$lnk = $wsh.CreateShortcut($lnkPath)
-$lnk.TargetPath = $ps
-$lnk.Arguments = ('-NoProfile -ExecutionPolicy Bypass -Sta -WindowStyle Hidden -File "{0}\override.ps1"' -f $here)
-$lnk.WorkingDirectory = $here
-if (Test-Path $ico) { $lnk.IconLocation = "$ico,0" }
-$lnk.WindowStyle = 1
-$lnk.Description = "OVERRIDE v5 - the alarm you cannot snooze your way out of"
-$lnk.Save()
-Write-Host ("desktop shortcut: " + $lnkPath) -ForegroundColor Green
+try {
+  $desktop = [Environment]::GetFolderPath("Desktop")
+  $lnkPath = Join-Path $desktop "OVERRIDE.lnk"
+  $wsh = New-Object -ComObject WScript.Shell
+  $lnk = $wsh.CreateShortcut($lnkPath)
+  $lnk.TargetPath = $ps
+  $lnk.Arguments = ('-NoProfile -ExecutionPolicy Bypass -Sta -WindowStyle Hidden -File "{0}\override.ps1"' -f $here)
+  $lnk.WorkingDirectory = $here
+  if (Test-Path $ico) { $lnk.IconLocation = "$ico,0" }
+  $lnk.WindowStyle = 1
+  $lnk.Description = "OVERRIDE v5 - the alarm you cannot snooze your way out of"
+  $lnk.Save()
+  Write-Host ("desktop shortcut: " + $lnkPath) -ForegroundColor Green
+} catch {
+  Write-Warning ("could not create the desktop shortcut ({0})." -f $_.Exception.Message)
+  Write-Host ("Launch the app directly instead:`n  {0} -NoProfile -ExecutionPolicy Bypass -Sta -File `"{1}\override.ps1`"" -f $ps, $here) -ForegroundColor Yellow
+}
 
 if ($Arm) { & (Join-Path $here "override.ps1") -Arm }

@@ -31,7 +31,7 @@ $script:THEMES = @('green','red','cyber','crt','roulette')
 function New-DefaultConfig {
   $cats = [ordered]@{}; foreach ($c in $script:CATS) { $cats[$c] = ($c -eq 'arithmetic') }
   [pscustomobject]@{ version = 5
-    defaults = [pscustomobject]@{ difficulty='hard'; numQuestions=3; durationMin=3; lockVolume=$true; narrator=$true; matrixRain=$true; theme='green'; renderer='auto'; edgeMinFreeMB=900; categories=[pscustomobject]$cats }
+    defaults = [pscustomobject]@{ difficulty='hard'; numQuestions=3; durationMin=3; lockVolume=$true; narrator=$true; matrixRain=$true; theme='green'; renderer='auto'; edgeMinFreeMB=900; lockdownMaxMin=6; categories=[pscustomobject]$cats }
     alarms   = @() }
 }
 function Load-Config {
@@ -166,7 +166,20 @@ function Set-TaskMgrDisabled([bool]$on) {
     else { $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($sub,$true); if ($k) { try { $k.DeleteValue('DisableTaskMgr',$false) } catch {}; $k.Close() } }
   } catch {}
 }
-function Invoke-Unlock { Set-TaskMgrDisabled $false; try { [Lockdown]::Remove() } catch {} }
+function Invoke-Unlock {
+  Set-TaskMgrDisabled $false; try { [Lockdown]::Remove() } catch {}
+  # ORPHAN REAPER (audit fix #21): if the ring was hard-killed (Task Scheduler time limit,
+  # End Task, crash) its finally never ran, so a fullscreen Edge kiosk / mshta quiz can be left
+  # stuck on screen with no engine behind it. The +6min safe task calls -Unlock -> here; if NO
+  # ring is currently active (mutex free), kill any leftover quiz windows. Guarded so we never
+  # kill a LEGITIMATELY-running quiz during a long alarm (mutex held -> skip).
+  try {
+    if (-not (Test-RingActive)) {
+      try { Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" -OperationTimeoutSec 4 -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'override_v5_profile' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } } catch {}
+      try { Get-CimInstance Win32_Process -Filter "Name='mshta.exe'" -OperationTimeoutSec 4 -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'quiz' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } } catch {}
+    }
+  } catch {}
+}
 function Test-RingActive {
   try { $m = New-Object System.Threading.Mutex($false,'Local\OVERRIDE_V2_ring_lock'); $g = $m.WaitOne(0); if ($g) { $m.ReleaseMutex(); $m.Dispose(); return $false }; $m.Dispose(); return $true } catch { return $false }
 }
@@ -367,10 +380,13 @@ function Test-QuizPresent {
   # (1) recent listener traffic = the browser quiz is beating; (2) else a hosting process exists.
   try { if (((Get-Date) - $script:rg_lastQuizSeen).TotalSeconds -lt 8) { return $true } } catch {}
   try {
+    # -OperationTimeoutSec (audit fix #22): a sick/overloaded WMI service can make an untimed
+    # Get-CimInstance hang for many seconds ON THE RING'S PUMP THREAD, which would freeze the
+    # deadline/UNLOCK/PANIC checks and the keyboard hook's liveness. Bound every CIM call.
     if ($script:rg_useEdge) {
-      return (@(Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'override_v5_profile' }).Count -gt 0)
+      return (@(Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" -OperationTimeoutSec 4 -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'override_v5_profile' }).Count -gt 0)
     } else {
-      return (@(Get-CimInstance Win32_Process -Filter "Name='mshta.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'quiz' }).Count -gt 0)
+      return (@(Get-CimInstance Win32_Process -Filter "Name='mshta.exe'" -OperationTimeoutSec 4 -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'quiz' }).Count -gt 0)
     }
   } catch { return $true }   # uncertain -> assume alive; better to under-relaunch than thrash
 }
@@ -378,10 +394,10 @@ function Stop-QuizProcs {
   try { if ($script:rg_proc -and -not $script:rg_proc.HasExited) { $script:rg_proc.Kill() } } catch {}
   # targeted sweep: ONLY our kiosk profile's Edge processes + our quiz mshta. The user's
   # own browser windows are untouched (different user-data-dir / command line).
-  try { Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" |
+  try { Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" -OperationTimeoutSec 4 |
         Where-Object { $_.CommandLine -match 'override_v5_profile' } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } } catch {}
-  try { Get-CimInstance Win32_Process -Filter "Name='mshta.exe'" |
+  try { Get-CimInstance Win32_Process -Filter "Name='mshta.exe'" -OperationTimeoutSec 4 |
         Where-Object { $_.CommandLine -match 'quiz\.hta' } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } } catch {}
 }
@@ -429,7 +445,13 @@ function Ring-Tick {
     # TEST ring (no relaunch): end when the single window closes.
     if (($null -eq $script:rg_proc) -or $script:rg_proc.HasExited) { End-Ring; return }
   }
-  if ($script:rg_lockdown -and (($script:rg_tk % 6) -eq 0)) { try { Get-Process -Name Taskmgr -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue } catch {} }
+  # LOCKDOWN CAP (audit fix #20): once past rg_lockUntil, drop OUR keyboard hook + re-enable Task
+  # Manager while the alarm keeps ringing — so a long alarm can't leave hotkeys blocked for up to
+  # an hour. Done once. (The ring's finally also releases; this is idempotent.)
+  if ($script:rg_lockdown -and -not $script:rg_lockReleased -and ($now -ge $script:rg_lockUntil)) {
+    try { [Lockdown]::Remove() } catch {}; Set-TaskMgrDisabled $false; $script:rg_lockReleased = $true
+  }
+  if ($script:rg_lockdown -and -not $script:rg_lockReleased -and (($script:rg_tk % 6) -eq 0)) { try { Get-Process -Name Taskmgr -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue } catch {} }
   if ($script:rg_narrator -and ($now -ge $script:rg_nagAt)) { Speak-Line ($script:NAG_LINES | Get-Random); $script:rg_nagAt = $now.AddSeconds(22) }
 }
 function Resolve-Sounds {
@@ -468,6 +490,14 @@ function Run-Ring {
   $script:rg_relaunch = $S.Relaunch; $script:rg_lockdown = $S.Lockdown; $script:rg_lockVol = $S.LockVol; $script:rg_narrator = $S.Narrator
   $script:rg_proc = $null; $script:rg_sndIdx = 0; $script:rg_nagAt = $start.AddSeconds(16); $script:rg_tk = 0; $script:rg_pinnedH = [IntPtr]::Zero
   $script:rg_launchGrace = 12; $script:rg_launchAt = $start; $script:rg_lastQuizSeen = $start   # anti-thrash (bug museum #17)
+  # LOCKDOWN CAP (audit fix #20): the keyboard hook lives in THIS process; the +6min safe task
+  # runs in a DIFFERENT process and its [Lockdown]::Remove() is a no-op against our live hook. So
+  # a long alarm (durationMin up to 60) could block hotkeys the whole time. Instead the ring drops
+  # its OWN hook after at most lockdownMaxMin (default 6) while the alarm keeps ringing. The sound
+  # keeps you engaged; you just regain Alt+Tab etc. (Ctrl+Alt+Del always worked regardless.)
+  $lockMaxMin = [int](Get-Prop $script:cfg.defaults 'lockdownMaxMin' 6); if ($lockMaxMin -lt 1) { $lockMaxMin = 1 }
+  $script:rg_lockReleased = $false
+  $script:rg_lockUntil = $start.AddSeconds([Math]::Min($S.DurationSec, $lockMaxMin * 60))
 
   Start-Listener
   # ADAPTIVE RENDERER (v5): Edge kiosk is prettier but heavy (~9 procs / ~450 MB). On this
@@ -479,7 +509,7 @@ function Run-Ring {
   $rendPref = [string]$S.Renderer
   $edgeMinFree = [int]$S.EdgeMinFreeMB
   $edgeAvail = ($null -ne (Find-Edge)) -and (Test-Path $script:quizHtml) -and ($script:rg_port -gt 0)
-  $freeMB = try { [int]((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1KB) } catch { 999999 }
+  $freeMB = try { [int]((Get-CimInstance Win32_OperatingSystem -OperationTimeoutSec 4).FreePhysicalMemory/1KB) } catch { 999999 }
   $ramOk = ($freeMB -ge $edgeMinFree)
   $script:rg_useEdge = switch ($rendPref) {
     'edge'  { $edgeAvail }

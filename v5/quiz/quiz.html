@@ -11,7 +11,7 @@
    Config arrives in the query string; SOLVED + heartbeat go to the ring engine's
    localhost listener via image beacons (no CORS needed from file:// pages).
    ?key=..&port=8741&label=..&n=3&diff=hard&cats=a,b&rain=1&deadline=<ms>&theme=crt&user=Enis */
-var BEAT_FAILS = 0, PAGE_START = new Date().getTime();
+var BEAT_FAILS = 0, PAGE_START = new Date().getTime(), DONE = false;
 
 function qs(name){
   var m = location.search.match(new RegExp("[?&]"+name+"=([^&]*)"));
@@ -27,9 +27,14 @@ function boot(){
   var theme=qs("theme")||"green", user=qs("user")||"";
   var base="http://127.0.0.1:"+port;
 
-  setInterval(function(){
-    var img=beacon(base+"/beat?r="+Math.random());
-    if(img){ img.onload=function(){ BEAT_FAILS=0; }; img.onerror=function(){ BEAT_FAILS++; }; }
+  // heartbeat: reuse ONE Image object instead of allocating a new one every 2s (audit fix #23 —
+  // a 60-min ring would otherwise churn ~1,800 Image objects). Stop polling once solved.
+  var beatImg = new Image();
+  beatImg.onload = function(){ BEAT_FAILS=0; };
+  beatImg.onerror = function(){ BEAT_FAILS++; };
+  var beatTimer = setInterval(function(){
+    if (DONE) { clearInterval(beatTimer); return; }
+    try{ beatImg.src = base+"/beat?r="+Math.random(); }catch(e){}
   }, 2000);
 
   OVERRIDE_UI.init({
@@ -43,6 +48,7 @@ function boot(){
       }catch(e){}
     },
     unlock: function(){
+      DONE = true;                 // stop the heartbeat poll once solved
       var i;
       for(i=0;i<3;i++){ setTimeout(function(){ beacon(base+"/unlock?key="+encodeURIComponent(key)); }, i*500); }
     },
@@ -50,7 +56,7 @@ function boot(){
       if((new Date().getTime()-PAGE_START)<12000) return false;
       return BEAT_FAILS>=4;
     },
-    closeWin: function(){ try{ window.close(); }catch(e){} }
+    closeWin: function(){ DONE = true; try{ window.close(); }catch(e){} }
   });
 }
 window.onload = boot;
