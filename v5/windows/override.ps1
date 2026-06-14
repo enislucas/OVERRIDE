@@ -31,7 +31,7 @@ $script:THEMES = @('green','red','cyber','crt','roulette')
 function New-DefaultConfig {
   $cats = [ordered]@{}; foreach ($c in $script:CATS) { $cats[$c] = ($c -eq 'arithmetic') }
   [pscustomobject]@{ version = 5
-    defaults = [pscustomobject]@{ difficulty='hard'; numQuestions=3; durationMin=3; lockVolume=$true; narrator=$true; matrixRain=$true; theme='green'; categories=[pscustomobject]$cats }
+    defaults = [pscustomobject]@{ difficulty='hard'; numQuestions=3; durationMin=3; lockVolume=$true; narrator=$true; matrixRain=$true; theme='green'; renderer='auto'; edgeMinFreeMB=900; categories=[pscustomobject]$cats }
     alarms   = @() }
 }
 function Load-Config {
@@ -243,13 +243,16 @@ function Get-AlarmSettings($id) {
   $thm  = [string](Get-Prop $a 'theme'        (Get-Prop $d 'theme' 'green'))
   $catO =         (Get-Prop $a 'categories'   (Get-Prop $d 'categories' $null))
   $lbl  = [string](Get-Prop $a 'label' 'WAKE UP')
+  $rend = [string](Get-Prop $a 'renderer'     (Get-Prop $d 'renderer' 'auto'))
+  $emf  = [int]   (Get-Prop $a 'edgeMinFreeMB' (Get-Prop $d 'edgeMinFreeMB' 900))
   if ($dur -lt 1) { $dur = 1 }
-  return @{ Label=$lbl; Diff=$diff; NumQ=$nq; Cats=(Convert-Cats $catO); DurationSec=($dur*60); LockVol=$lv; Narrator=$nar; MatrixRain=$mr; Theme=$thm; Lockdown=$true; Relaunch=$true; Quiet=$false }
+  return @{ Label=$lbl; Diff=$diff; NumQ=$nq; Cats=(Convert-Cats $catO); DurationSec=($dur*60); LockVol=$lv; Narrator=$nar; MatrixRain=$mr; Theme=$thm; Renderer=$rend; EdgeMinFreeMB=$emf; Lockdown=$true; Relaunch=$true; Quiet=$false }
 }
 function Get-TestSettings {
   $p = Join-Path $script:root 'session.testcfg'
   $diff='hard'; $nq=3; $cats=(Convert-Cats (Get-Prop $script:cfg.defaults 'categories' $null)); $dur=45; $lv=$true; $mr=$true; $nar=$true; $quiet=$false; $rel=$false
   $thm=[string](Get-Prop $script:cfg.defaults 'theme' 'green')
+  $rend=[string](Get-Prop $script:cfg.defaults 'renderer' 'auto'); $emf=[int](Get-Prop $script:cfg.defaults 'edgeMinFreeMB' 900)
   if (Test-Path $p) { try { $t = Get-Content $p -Raw | ConvertFrom-Json
     if ($t.difficulty) { $diff=[string]$t.difficulty }
     if ($t.numQuestions) { $nq=[int]$t.numQuestions }
@@ -261,9 +264,11 @@ function Get-TestSettings {
     if ($t.PSObject.Properties.Name -contains 'durationSec'){ $dur=[int]$t.durationSec; if ($dur -lt 5) { $dur = 5 } }
     if ($t.PSObject.Properties.Name -contains 'quiet')      { $quiet=[bool]$t.quiet }
     if ($t.PSObject.Properties.Name -contains 'relaunch')   { $rel=[bool]$t.relaunch }   # test the anti-thrash relaunch path
+    if ($t.PSObject.Properties.Name -contains 'renderer')   { $rend=[string]$t.renderer }
+    if ($t.PSObject.Properties.Name -contains 'edgeMinFreeMB'){ $emf=[int]$t.edgeMinFreeMB }
   } catch {} }
   if ($quiet) { $lv = $false; $nar = $false }
-  return @{ Label='TEST'; Diff=$diff; NumQ=$nq; Cats=$cats; DurationSec=$dur; LockVol=$lv; Narrator=$nar; MatrixRain=$mr; Theme=$thm; Lockdown=$false; Relaunch=$rel; Quiet=$quiet }
+  return @{ Label='TEST'; Diff=$diff; NumQ=$nq; Cats=$cats; DurationSec=$dur; LockVol=$lv; Narrator=$nar; MatrixRain=$mr; Theme=$thm; Renderer=$rend; EdgeMinFreeMB=$emf; Lockdown=$false; Relaunch=$rel; Quiet=$quiet }
 }
 
 # ---- unlock/heartbeat listener (raw TCP: works without admin, unlike HttpListener) ----
@@ -383,7 +388,7 @@ function Stop-QuizProcs {
 
 # ---- the ring engine -------------------------------------------------------
 function Remove-RingFiles {
-  foreach ($f in 'UNLOCK','PANIC','session.beat','session.key','session.deadline','session.deadlinems','session.start','session.label','session.quizcfg') {
+  foreach ($f in 'UNLOCK','PANIC','session.beat','session.key','session.deadline','session.deadlinems','session.start','session.label','session.quizcfg','session.render') {
     $p = Join-Path $script:root $f; if (Test-Path $p) { try { [System.IO.File]::Delete($p) } catch {} }
   }
 }
@@ -465,7 +470,24 @@ function Run-Ring {
   $script:rg_launchGrace = 12; $script:rg_launchAt = $start; $script:rg_lastQuizSeen = $start   # anti-thrash (bug museum #17)
 
   Start-Listener
-  $script:rg_useEdge = ($null -ne (Find-Edge)) -and (Test-Path $script:quizHtml) -and ($script:rg_port -gt 0)
+  # ADAPTIVE RENDERER (v5): Edge kiosk is prettier but heavy (~9 procs / ~450 MB). On this
+  # machine the user often runs heavy Edge + several VS Code/Claude instances, so at ring time
+  # we check FREE RAM and fall back to the featherweight mshta renderer (~44 MB / 1 proc, still
+  # themed) when memory is tight — never risk a low-memory crash for visual polish.
+  #   defaults.renderer: 'auto' (default, RAM-based) | 'edge' (force) | 'mshta' (force light)
+  #   defaults.edgeMinFreeMB: free-RAM floor for choosing Edge in auto mode (default 900)
+  $rendPref = [string]$S.Renderer
+  $edgeMinFree = [int]$S.EdgeMinFreeMB
+  $edgeAvail = ($null -ne (Find-Edge)) -and (Test-Path $script:quizHtml) -and ($script:rg_port -gt 0)
+  $freeMB = try { [int]((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1KB) } catch { 999999 }
+  $ramOk = ($freeMB -ge $edgeMinFree)
+  $script:rg_useEdge = switch ($rendPref) {
+    'edge'  { $edgeAvail }
+    'mshta' { $false }
+    default { $edgeAvail -and $ramOk }   # 'auto'
+  }
+  $script:rg_renderChoice = if ($script:rg_useEdge) { "edge" } else { "mshta" }
+  try { Set-Content -Path (Join-Path $script:root 'session.render') -Value ("{0} (pref={1} freeMB={2} floor={3} edgeAvail={4})" -f $script:rg_renderChoice,$rendPref,$freeMB,$edgeMinFree,$edgeAvail) -Encoding ASCII } catch {}
 
   if ($S.Quiet) { $script:rg_haveSnd = $false; $script:rg_tierA=@(); $script:rg_tierB=@(); $script:rg_tierC=@() }
   else { Resolve-Sounds }
