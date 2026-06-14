@@ -1,0 +1,18 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>fx3</title><style>
+html,body{height:100%;margin:0;background:#000;overflow:hidden;font-family:Consolas,monospace}
+.wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:34px}
+.card{width:760px;background:rgba(0,14,5,.92);border:1px solid #00ff66;border-radius:10px;padding:20px 30px;box-shadow:0 0 40px rgba(0,255,102,.25)}
+.lbl{font-size:11px;letter-spacing:3px;color:#0a7;margin-bottom:8px}
+.t{font-size:30px;color:#aeffd2;text-shadow:0 0 10px rgba(0,255,102,.5);font-family:"MS Gothic","Yu Gothic",Consolas,monospace}
+.f1{opacity:1}.f2{opacity:.75}.f3{opacity:.30}
+.sub{color:#7CFFB0;font-size:15px;width:700px;text-align:center;line-height:1.7}
+.tag{position:fixed;left:40px;bottom:34px;color:#aeffd2;font-size:22px;letter-spacing:3px;background:rgba(0,16,6,.85);border:1px solid #00ff66;padding:14px 24px}
+</style></head><body>
+<div class="wrap">
+<div class="card"><div class="lbl">STAGE 1 — readable</div><div class="t f1">DEPLOY ALARM &nbsp;04:10 &nbsp;WAKE UP</div></div>
+<div class="card"><div class="lbl">STAGE 2 — characters corrupt into CJK</div><div class="t f2">DE&#x4F2F;L&#x5C71;Y &#x6238;L&#x4E32;RM &nbsp;0&#x56DB;:1&#x4E07; &nbsp;W&#x6CE2;KE &#x4E0A;P</div></div>
+<div class="card"><div class="lbl">STAGE 3 — fully scrambled, then fades out</div><div class="t f3">&#x4F2F;&#x5C71;&#x6238;&#x4E32;&#x4E07;&#x6CE2;&#x4E0A;&#x5DDD;&#x53E3;&#x6728;&#x706B;&#x571F;&#x91D1;&#x6C34;&#x6708;&#x65E5;</div></div>
+<div class="sub">CHINESE VANISH — the v2 DEPLOY animation you liked: every label morphs into random CJK glyphs, the window fades, then everything restores. In v4 it can also play when the quiz is SOLVED (the alarm "dissolves").</div>
+</div>
+<div class="tag">effect_03_cjk_vanish</div>
+</body></html>
