@@ -225,7 +225,7 @@ function Get-AlarmSettings($id) {
 }
 function Get-TestSettings {
   $p = Join-Path $script:root 'session.testcfg'
-  $diff='hard'; $nq=3; $cats=(Convert-Cats (Get-Prop $script:cfg.defaults 'categories' $null)); $dur=45; $lv=$true; $mr=$false; $nar=$true; $quiet=$false
+  $diff='hard'; $nq=3; $cats=(Convert-Cats (Get-Prop $script:cfg.defaults 'categories' $null)); $dur=45; $lv=$true; $mr=$false; $nar=$true; $quiet=$false; $rel=$false
   if (Test-Path $p) { try { $t = Get-Content $p -Raw | ConvertFrom-Json
     if ($t.difficulty) { $diff=[string]$t.difficulty }
     if ($t.numQuestions) { $nq=[int]$t.numQuestions }
@@ -235,9 +235,10 @@ function Get-TestSettings {
     if ($t.PSObject.Properties.Name -contains 'narrator')   { $nar=[bool]$t.narrator }
     if ($t.PSObject.Properties.Name -contains 'durationSec'){ $dur=[int]$t.durationSec; if ($dur -lt 5) { $dur = 5 } }
     if ($t.PSObject.Properties.Name -contains 'quiet')      { $quiet=[bool]$t.quiet }
+    if ($t.PSObject.Properties.Name -contains 'relaunch')   { $rel=[bool]$t.relaunch }   # test the anti-thrash relaunch path
   } catch {} }
   if ($quiet) { $lv = $false; $nar = $false }    # automated tests: no sound, no voice, no volume grab
-  return @{ Label='TEST'; Diff=$diff; NumQ=$nq; Cats=$cats; DurationSec=$dur; LockVol=$lv; Narrator=$nar; MatrixRain=$mr; Lockdown=$false; Relaunch=$false; Quiet=$quiet }
+  return @{ Label='TEST'; Diff=$diff; NumQ=$nq; Cats=$cats; DurationSec=$dur; LockVol=$lv; Narrator=$nar; MatrixRain=$mr; Lockdown=$false; Relaunch=$rel; Quiet=$quiet }
 }
 
 # ---- the ring engine -------------------------------------------------------
@@ -247,12 +248,23 @@ function Remove-RingFiles {
   }
 }
 function Launch-HTA {
+  # launch-grace anchor: never re-evaluate "alive / relaunch" for rg_launchGrace seconds after
+  # a launch. Fix for the relaunch-thrash bug (bug museum #17): mshta hands the HTA off to a
+  # different process, so the launched PID's HasExited lies almost immediately -> the old code
+  # relaunched every ~0.5s and the window was never solvable (3 forced shutdowns).
+  $script:rg_launchAt = Get-Date
   try {
     if (-not (Test-Path $script:quizHta)) { $script:rg_mshta = $null; return }
     $exe = Join-Path $env:WINDIR 'System32\mshta.exe'
     $hta = '"' + $script:quizHta + '"'
     $script:rg_mshta = Start-Process $exe -ArgumentList $hta -PassThru
   } catch { $script:rg_mshta = $null }
+}
+function Test-QuizPresent {
+  # truth, not the launched PID: is an mshta hosting our quiz actually running?
+  try {
+    return (@(Get-CimInstance Win32_Process -Filter "Name='mshta.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'quiz' }).Count -gt 0)
+  } catch { return $true }   # uncertain -> assume alive; never thrash
 }
 function End-Ring {
   if ($script:rg_exiting) { return }
@@ -271,19 +283,25 @@ function Ring-Tick {
   if ($now -ge $script:rg_deadline -or (Test-Path (Join-Path $script:root 'PANIC'))) { End-Ring; return }
   # ensure the quiz is alive + on top (gently: z-order only, no focus loops)
   $script:rg_tk++
-  $alive = ($null -ne $script:rg_mshta) -and (-not $script:rg_mshta.HasExited)
-  if (-not $alive) {
-    # real alarm: relaunch the quiz if it was closed (or keep retrying if it never started —
-    # the sound keeps ringing either way). Test ring: closing the quiz ends the test.
-    if ($script:rg_relaunch) { Launch-HTA; $script:rg_pinnedH = [IntPtr]::Zero } else { End-Ring; return }
-  } else {
+  if ($script:rg_relaunch) {
+    # REAL alarm: relaunch ONLY if the quiz is genuinely gone (verified by process presence, NOT
+    # the lying launched PID), and only after the launch grace. Checked at most every 2s. Cannot
+    # thrash: worst case one relaunch per grace window, and each relaunch re-anchors the grace.
+    if ((($now - $script:rg_launchAt).TotalSeconds -ge $script:rg_launchGrace) -and (($script:rg_tk % 4) -eq 0)) {
+      if (-not (Test-QuizPresent)) { Launch-HTA; $script:rg_pinnedH = [IntPtr]::Zero }
+    }
     try {
-      $script:rg_mshta.Refresh(); $h = $script:rg_mshta.MainWindowHandle
-      if ($h -ne [IntPtr]::Zero) {
-        if ($h -ne $script:rg_pinnedH) { [Win]::Raise($h); $script:rg_pinnedH = $h }   # once: topmost + single soft focus
-        elseif (($script:rg_tk % 4) -eq 0) { [Win]::TopMost($h) }                       # then z-order nudge only (~2s)
+      if ($script:rg_mshta -and -not $script:rg_mshta.HasExited) {
+        $script:rg_mshta.Refresh(); $h = $script:rg_mshta.MainWindowHandle
+        if ($h -ne [IntPtr]::Zero) {
+          if ($h -ne $script:rg_pinnedH) { [Win]::Raise($h); $script:rg_pinnedH = $h }   # once: topmost + single soft focus
+          elseif (($script:rg_tk % 4) -eq 0) { [Win]::TopMost($h) }                       # then z-order nudge only (~2s)
+        }
       }
     } catch {}
+  } else {
+    # TEST ring: closing the quiz ends the test.
+    if (($null -eq $script:rg_mshta) -or $script:rg_mshta.HasExited) { End-Ring; return }
   }
   if ($script:rg_lockdown -and (($script:rg_tk % 6) -eq 0)) { try { Get-Process -Name Taskmgr -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue } catch {} }
   if ($script:rg_narrator -and ($now -ge $script:rg_nagAt)) { Speak-Line ($script:NAG_LINES | Get-Random); $script:rg_nagAt = $now.AddSeconds(22) }
@@ -321,6 +339,7 @@ function Run-Ring {
 
   $script:rg_relaunch = $S.Relaunch; $script:rg_lockdown = $S.Lockdown; $script:rg_lockVol = $S.LockVol; $script:rg_narrator = $S.Narrator
   $script:rg_mshta = $null; $script:rg_sndIdx = 0; $script:rg_nagAt = $start.AddSeconds(16); $script:rg_tk = 0; $script:rg_pinnedH = [IntPtr]::Zero
+  $script:rg_launchGrace = 12; $script:rg_launchAt = $start   # anti-thrash (bug museum #17)
 
   if ($S.Quiet) { $script:rg_haveSnd = $false; $script:rg_tierA=@(); $script:rg_tierB=@(); $script:rg_tierC=@() }
   else { Resolve-Sounds }

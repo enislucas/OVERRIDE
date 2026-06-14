@@ -217,6 +217,18 @@ function Resolve-Theme([string]$t) {
   if ($script:THEMES -contains $t) { return $t }
   return 'green'
 }
+function C([int]$r,[int]$g,[int]$b) { [System.Drawing.Color]::FromArgb($r,$g,$b) }
+function Get-PanelPalette([string]$theme) {
+  # the control panel wears the same skin as the quiz — driven by defaults.theme.
+  # Accent2 = a vivid secondary used for headers/highlights so the panel doesn't read "pale".
+  $t = $theme; if ($t -eq 'roulette' -or -not ($script:THEMES -contains $t)) { $t = 'green' }
+  switch ($t) {
+    'red'   { @{ Accent=(C 255 60 75);  Accent2=(C 255 120 60); Dim=(C 255 175 180); Box=(C 20 1 4);  Field=(C 40 2 8);   Row=(C 36 3 9);  Glow=(C 255 40 60);  Rain=(C 255 55 70);  Scan=(C 60 0 0) } }
+    'cyber' { @{ Accent=(C 60 255 255); Accent2=(C 255 70 220); Dim=(C 210 180 255); Box=(C 10 7 30); Field=(C 18 14 46); Row=(C 20 14 44); Glow=(C 255 0 230);  Rain=(C 0 255 255);  Scan=(C 0 40 50) } }
+    'crt'   { @{ Accent=(C 60 255 150); Accent2=(C 0 230 130);  Dim=(C 150 255 200); Box=(C 2 16 7);  Field=(C 0 30 13);  Row=(C 0 28 12); Glow=(C 0 255 120);  Rain=(C 60 255 150); Scan=(C 0 48 20) } }
+    default { @{ Accent=(C 0 255 120);  Accent2=(C 120 255 90);  Dim=(C 150 255 195); Box=(C 0 16 7);  Field=(C 0 32 14);  Row=(C 0 28 12); Glow=(C 0 255 120);  Rain=(C 0 255 120);  Scan=(C 0 40 18) } }
+  }
+}
 function Get-AlarmSettings($id) {
   Load-Config
   $d = $script:cfg.defaults
@@ -235,7 +247,7 @@ function Get-AlarmSettings($id) {
 }
 function Get-TestSettings {
   $p = Join-Path $script:root 'session.testcfg'
-  $diff='hard'; $nq=3; $cats=(Convert-Cats (Get-Prop $script:cfg.defaults 'categories' $null)); $dur=45; $lv=$true; $mr=$true; $nar=$true; $quiet=$false
+  $diff='hard'; $nq=3; $cats=(Convert-Cats (Get-Prop $script:cfg.defaults 'categories' $null)); $dur=45; $lv=$true; $mr=$true; $nar=$true; $quiet=$false; $rel=$false
   $thm=[string](Get-Prop $script:cfg.defaults 'theme' 'green')
   if (Test-Path $p) { try { $t = Get-Content $p -Raw | ConvertFrom-Json
     if ($t.difficulty) { $diff=[string]$t.difficulty }
@@ -247,14 +259,17 @@ function Get-TestSettings {
     if ($t.PSObject.Properties.Name -contains 'theme')      { $thm=[string]$t.theme }
     if ($t.PSObject.Properties.Name -contains 'durationSec'){ $dur=[int]$t.durationSec; if ($dur -lt 5) { $dur = 5 } }
     if ($t.PSObject.Properties.Name -contains 'quiet')      { $quiet=[bool]$t.quiet }
+    if ($t.PSObject.Properties.Name -contains 'relaunch')   { $rel=[bool]$t.relaunch }   # test the anti-thrash relaunch path
   } catch {} }
   if ($quiet) { $lv = $false; $nar = $false }
-  return @{ Label='TEST'; Diff=$diff; NumQ=$nq; Cats=$cats; DurationSec=$dur; LockVol=$lv; Narrator=$nar; MatrixRain=$mr; Theme=$thm; Lockdown=$false; Relaunch=$false; Quiet=$quiet }
+  return @{ Label='TEST'; Diff=$diff; NumQ=$nq; Cats=$cats; DurationSec=$dur; LockVol=$lv; Narrator=$nar; MatrixRain=$mr; Theme=$thm; Lockdown=$false; Relaunch=$rel; Quiet=$quiet }
 }
 
 # ---- unlock/heartbeat listener (raw TCP: works without admin, unlike HttpListener) ----
 function Start-Listener {
   $script:rg_tcp = $null; $script:rg_port = 0
+  # a valid 43-byte 1x1 GIF returned to every beacon so the browser <img> fires onload
+  $script:rg_gif = [byte[]]@(0x47,0x49,0x46,0x38,0x39,0x61,0x01,0x00,0x01,0x00,0x80,0x00,0x00,0x00,0x00,0x00,0xFF,0xFF,0xFF,0x21,0xF9,0x04,0x01,0x00,0x00,0x00,0x00,0x2C,0x00,0x00,0x00,0x00,0x01,0x00,0x01,0x00,0x00,0x02,0x02,0x44,0x01,0x00,0x3B)
   foreach ($p in 8741..8749) {
     try {
       $l = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Loopback, $p)
@@ -270,6 +285,7 @@ function Pump-Listener {
     $client = $null
     try {
       $client = $script:rg_tcp.AcceptTcpClient()
+      $script:rg_lastQuizSeen = Get-Date    # browser quiz is alive (it beats every 2s) -> never relaunch over it
       $client.ReceiveTimeout = 400
       $stream = $client.GetStream(); $stream.ReadTimeout = 400
       $buf = New-Object byte[] 2048
@@ -279,7 +295,10 @@ function Pump-Listener {
         $k = $Matches[1]
         if ($k -eq $script:rg_key) { Set-Content -Path (Join-Path $script:root 'UNLOCK') -Value $k -Encoding ASCII }
       }
-      $body = [System.Text.Encoding]::ASCII.GetBytes("GIF89a")
+      # a REAL 43-byte 1x1 GIF — must actually DECODE so the browser's <img> beacon fires onload
+      # and resets its failure counter. Replying with the bare string "GIF89a" made every beat
+      # fail to decode -> the quiz wrongly concluded "engine gone" and closed itself at ~12s.
+      $body = $script:rg_gif
       $hdr = "HTTP/1.1 200 OK`r`nContent-Type: image/gif`r`nAccess-Control-Allow-Origin: *`r`nContent-Length: $($body.Length)`r`nConnection: close`r`n`r`n"
       $hb = [System.Text.Encoding]::ASCII.GetBytes($hdr)
       $stream.Write($hb, 0, $hb.Length); $stream.Write($body, 0, $body.Length); $stream.Flush()
@@ -313,15 +332,21 @@ function Get-QuizUrl {
 }
 function Launch-Quiz {
   $script:rg_proc = $null
+  # launch-grace anchor: NEVER re-evaluate "is the quiz alive / should I relaunch" for the next
+  # rg_launchGrace seconds. This is the fix for the relaunch-thrash bug (bug museum #17): mshta
+  # and Edge both hand off to a different process, so the launched PID's HasExited lies almost
+  # immediately -> the old code relaunched every ~0.5s and the window was never solvable.
+  $script:rg_launchAt = Get-Date
+  $script:rg_lastQuizSeen = Get-Date
   if ($script:rg_useEdge) {
     try {
       $url = Get-QuizUrl
-      $args = @("--user-data-dir=`"$($script:EDGE_PROFILE)`"", '--no-first-run', '--disable-extensions',
+      $edgeArgs = @("--user-data-dir=`"$($script:EDGE_PROFILE)`"", '--no-first-run', '--disable-extensions',
                 '--disable-sync', '--no-default-browser-check', '--disable-session-crashed-bubble',
                 '--disk-cache-size=1048576', '--autoplay-policy=no-user-gesture-required',
                 '--renderer-process-limit=2', '--disable-background-networking',   # low-RAM machine: keep the kiosk lean
                 '--kiosk', "`"$url`"", '--edge-kiosk-type=fullscreen')
-      $script:rg_proc = Start-Process (Find-Edge) -ArgumentList ($args -join ' ') -PassThru
+      $script:rg_proc = Start-Process (Find-Edge) -ArgumentList ($edgeArgs -join ' ') -PassThru
       return
     } catch { $script:rg_proc = $null; $script:rg_useEdge = $false }   # fall through to mshta
   }
@@ -330,6 +355,18 @@ function Launch-Quiz {
     $exe = Join-Path $env:WINDIR 'System32\mshta.exe'
     $script:rg_proc = Start-Process $exe -ArgumentList ('"' + $script:quizHta + '"') -PassThru
   } catch { $script:rg_proc = $null }
+}
+function Test-QuizPresent {
+  # robust "is the quiz still showing?" — NEVER trust the launched PID (mshta/Edge hand off).
+  # (1) recent listener traffic = the browser quiz is beating; (2) else a hosting process exists.
+  try { if (((Get-Date) - $script:rg_lastQuizSeen).TotalSeconds -lt 8) { return $true } } catch {}
+  try {
+    if ($script:rg_useEdge) {
+      return (@(Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'override_v4_profile' }).Count -gt 0)
+    } else {
+      return (@(Get-CimInstance Win32_Process -Filter "Name='mshta.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'quiz' }).Count -gt 0)
+    }
+  } catch { return $true }   # uncertain -> assume alive; better to under-relaunch than thrash
 }
 function Stop-QuizProcs {
   try { if ($script:rg_proc -and -not $script:rg_proc.HasExited) { $script:rg_proc.Kill() } } catch {}
@@ -364,17 +401,27 @@ function Ring-Tick {
   if (Test-Path $unlk) { $c = (Get-Content $unlk -Raw); if ($c) { $c = $c.Trim() }; if ($c -eq $script:rg_key) { $script:rg_solved = $true; End-Ring; return } }
   if ($now -ge $script:rg_deadline -or (Test-Path (Join-Path $script:root 'PANIC'))) { End-Ring; return }
   $script:rg_tk++
-  $alive = ($null -ne $script:rg_proc) -and (-not $script:rg_proc.HasExited)
-  if (-not $alive) {
-    if ($script:rg_relaunch) { Launch-Quiz; $script:rg_pinnedH = [IntPtr]::Zero } else { End-Ring; return }
-  } else {
+  if ($script:rg_relaunch) {
+    # REAL alarm: relaunch ONLY if the quiz is genuinely gone, and only after the launch grace.
+    # Checked at most every 2s (CIM is mildly expensive). This can no longer thrash: worst case
+    # is one relaunch per grace window, and each relaunch re-anchors the grace.
+    if ((($now - $script:rg_launchAt).TotalSeconds -ge $script:rg_launchGrace) -and (($script:rg_tk % 4) -eq 0)) {
+      if (-not (Test-QuizPresent)) { Launch-Quiz; $script:rg_pinnedH = [IntPtr]::Zero }
+    }
+    # gentle topmost nudge while we still hold a live window handle (best-effort; Edge kiosk is
+    # already topmost, mshta benefits). Never moves/resizes/focus-loops.
     try {
-      $script:rg_proc.Refresh(); $h = $script:rg_proc.MainWindowHandle
-      if ($h -ne [IntPtr]::Zero) {
-        if ($h -ne $script:rg_pinnedH) { [Win]::Raise($h); $script:rg_pinnedH = $h }
-        elseif (($script:rg_tk % 4) -eq 0) { [Win]::TopMost($h) }
+      if ($script:rg_proc -and -not $script:rg_proc.HasExited) {
+        $script:rg_proc.Refresh(); $h = $script:rg_proc.MainWindowHandle
+        if ($h -ne [IntPtr]::Zero) {
+          if ($h -ne $script:rg_pinnedH) { [Win]::Raise($h); $script:rg_pinnedH = $h }
+          elseif (($script:rg_tk % 4) -eq 0) { [Win]::TopMost($h) }
+        }
       }
     } catch {}
+  } else {
+    # TEST ring (no relaunch): end when the single window closes.
+    if (($null -eq $script:rg_proc) -or $script:rg_proc.HasExited) { End-Ring; return }
   }
   if ($script:rg_lockdown -and (($script:rg_tk % 6) -eq 0)) { try { Get-Process -Name Taskmgr -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue } catch {} }
   if ($script:rg_narrator -and ($now -ge $script:rg_nagAt)) { Speak-Line ($script:NAG_LINES | Get-Random); $script:rg_nagAt = $now.AddSeconds(22) }
@@ -414,6 +461,7 @@ function Run-Ring {
 
   $script:rg_relaunch = $S.Relaunch; $script:rg_lockdown = $S.Lockdown; $script:rg_lockVol = $S.LockVol; $script:rg_narrator = $S.Narrator
   $script:rg_proc = $null; $script:rg_sndIdx = 0; $script:rg_nagAt = $start.AddSeconds(16); $script:rg_tk = 0; $script:rg_pinnedH = [IntPtr]::Zero
+  $script:rg_launchGrace = 12; $script:rg_launchAt = $start; $script:rg_lastQuizSeen = $start   # anti-thrash (bug museum #17)
 
   Start-Listener
   $script:rg_useEdge = ($null -ne (Find-Edge)) -and (Test-Path $script:quizHtml) -and ($script:rg_port -gt 0)
@@ -482,8 +530,13 @@ function Remove-Alarms {
 }
 function Register-Alarms {
   Load-Config; Remove-Alarms
-  try { $sub="238c9fa8-0aad-41ed-83f4-97be242c8f20"; $set="bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d"
-    powercfg /setacvalueindex SCHEME_CURRENT $sub $set 1 | Out-Null; powercfg /setdcvalueindex SCHEME_CURRENT $sub $set 1 | Out-Null; powercfg /setactive SCHEME_CURRENT | Out-Null } catch {}
+  # enable wake-timers — only ONCE per process (the setting persists in the scheme; running the
+  # 3 powercfg calls on every re-arm was part of the panel's per-action lag)
+  if (-not $script:pn_powerDone) {
+    try { $sub="238c9fa8-0aad-41ed-83f4-97be242c8f20"; $set="bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d"
+      powercfg /setacvalueindex SCHEME_CURRENT $sub $set 1 | Out-Null; powercfg /setdcvalueindex SCHEME_CURRENT $sub $set 1 | Out-Null; powercfg /setactive SCHEME_CURRENT | Out-Null } catch {}
+    $script:pn_powerDone = $true
+  }
   $pw = (Get-Command powershell).Source; $n = 0
   foreach ($a in $script:cfg.alarms) {
     if (-not $a.enabled) { continue }
@@ -559,13 +612,14 @@ function Step-Rain($p) {
   $g.DrawImageUnscaled($st.scan, 0, 0); $g.Dispose(); $p.Invalidate()
 }
 function New-RainBackground {
-  param([int]$Fps = 8, [int]$FontSize = 18)
+  param([int]$Fps = 8, [int]$FontSize = 18, $Color = $null)
+  if (-not $Color) { $Color = [System.Drawing.Color]::FromArgb(0,255,102) }
   $panel = New-Object System.Windows.Forms.Panel; $panel.Dock = 'Fill'; $panel.BackColor = [System.Drawing.Color]::Black
   try { $bf = [System.Reflection.BindingFlags]([System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic); $panel.GetType().GetProperty('DoubleBuffered',$bf).SetValue($panel,$true,$null) } catch {}
   $st = @{ bmp=$null; scan=$null; drops=$null; cols=0; fh=$FontSize
     font=(New-Object System.Drawing.Font('Consolas',$FontSize,[System.Drawing.FontStyle]::Bold))
     chars='0123456789ABCDEF#$%*+=<>/\|'; fade=(New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(38,0,0,0)))
-    body=(New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(0,255,102))); rng=(New-Object System.Random); dispW=0; dispH=0 }
+    body=(New-Object System.Drawing.SolidBrush $Color); rng=(New-Object System.Random); dispW=0; dispH=0 }
   $panel.Tag = $st
   $panel.Add_Paint({ param($s,$e) $stt = $s.Tag; if ($stt.bmp) { $e.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor; $e.Graphics.DrawImage($stt.bmp, 0, 0, [int]$stt.dispW, [int]$stt.dispH) } })
   $panel.Add_Resize({ param($s,$e) Update-RainSize $s })
@@ -645,10 +699,11 @@ function Cats-Summary($cats) {
 function Panel-RenderRows {
   $script:pn_list.Controls.Clear()
   if (-not $script:pn_rowFonts) { $script:pn_rowFonts = @{ T=(New-Object System.Drawing.Font('Consolas',13,[System.Drawing.FontStyle]::Bold)); N=(New-Object System.Drawing.Font('Consolas',11)); B=(New-Object System.Drawing.Font('Consolas',9,[System.Drawing.FontStyle]::Bold)) } }
-  $green=[System.Drawing.Color]::FromArgb(0,255,102); $dim=[System.Drawing.Color]::FromArgb(150,220,180)
+  $pal = if ($script:pn_pal) { $script:pn_pal } else { Get-PanelPalette 'green' }
+  $green=$pal.Accent; $dim=$pal.Dim; $rowBg=$pal.Row
   $y = 4
   foreach ($al in $script:pn_alarms) {
-    $row = New-Object System.Windows.Forms.Panel; $row.Width=980; $row.Height=34; $row.Left=2; $row.Top=$y; $row.BackColor=[System.Drawing.Color]::FromArgb(0,20,9)
+    $row = New-Object System.Windows.Forms.Panel; $row.Width=980; $row.Height=34; $row.Left=2; $row.Top=$y; $row.BackColor=$rowBg
     $cb = New-Object System.Windows.Forms.CheckBox; $cb.Checked=$al.Enabled; $cb.Left=8; $cb.Top=8; $cb.Width=18; $cb.Tag=$al.Id
     $cb.Add_CheckedChanged({ param($s,$e) $t = $script:pn_alarms | Where-Object { $_.Id -eq $s.Tag } | Select-Object -First 1; if ($t) { $t.Enabled = $s.Checked }; Panel-Persist; Panel-RefreshArmed; Panel-UpdateStatus })
     $lt = New-Object System.Windows.Forms.Label; $lt.Text=$al.Time; $lt.Left=32; $lt.Top=8; $lt.Width=60; $lt.ForeColor=$green; $lt.Font=$script:pn_rowFonts.T
@@ -711,10 +766,30 @@ function Panel-SaveConfig {
   ($obj | ConvertTo-Json -Depth 8) | Out-File -FilePath $script:cfgPath -Encoding utf8
   Load-Config
 }
-function Panel-Persist { Panel-SaveConfig; try { Register-Alarms } catch { Panel-Log ("arm error: " + $_.Exception.Message) } }
+# Persist = save config INSTANTLY (fast), then DEBOUNCE the slow scheduled-task (re)arming.
+# Registering Windows tasks takes ~1-2s and runs on the UI thread; doing it on every click was
+# the "lag after every action + rain freezes" the user saw. Now clicks feel instant and the
+# arming collapses into one pass 1.2s after you stop interacting.
+function Panel-ScheduleArm {
+  if (-not $script:pn_armTimer) {
+    $script:pn_armTimer = New-Object System.Windows.Forms.Timer
+    $script:pn_armTimer.Interval = 1200
+    $script:pn_armTimer.Add_Tick({
+      $script:pn_armTimer.Stop()
+      try { $script:pn_log.Text = "arming..." } catch {}
+      try { Register-Alarms } catch { Panel-Log ("arm error: " + $_.Exception.Message) }
+      Panel-RefreshArmed
+      try { if ($script:pn_log.Text -eq "arming...") { $script:pn_log.Text = "armed." } } catch {}
+    })
+  }
+  $script:pn_armTimer.Stop(); $script:pn_armTimer.Start()
+  try { $script:pn_armed.Text = "ARMING..."; $script:pn_armed.ForeColor = $script:pn_pal.Dim } catch {}
+}
+function Panel-Persist { Panel-SaveConfig; Panel-ScheduleArm }
 function Panel-RefreshArmed {
   $armed = Get-ArmedCount
-  if ($armed -gt 0) { $script:pn_armed.Text = "ARMED ($armed)"; $script:pn_armed.ForeColor = [System.Drawing.Color]::FromArgb(0,255,102) } else { $script:pn_armed.Text = "NOT ARMED"; $script:pn_armed.ForeColor = [System.Drawing.Color]::FromArgb(255,140,0) }
+  $on = if ($script:pn_pal) { $script:pn_pal.Accent } else { [System.Drawing.Color]::FromArgb(0,255,102) }
+  if ($armed -gt 0) { $script:pn_armed.Text = "ARMED ($armed)"; $script:pn_armed.ForeColor = $on } else { $script:pn_armed.Text = "NOT ARMED"; $script:pn_armed.ForeColor = [System.Drawing.Color]::FromArgb(255,140,0) }
 }
 function Panel-UpdateStatus {
   $next = $null
@@ -781,9 +856,13 @@ function Show-PanelGui {
   if (-not (Test-RingActive)) { Set-TaskMgrDisabled $false }
   if (-not (Test-Path $script:cfgPath)) { if (Import-PriorConfig) { } }
   Panel-LoadAlarms
-  $script:pn_mr = $false   # panel's own rain stays opt-in via defaults; quiz rain is per-alarm
-  try { $script:pn_mr = [bool](Get-Prop $script:cfg.defaults 'panelRain' $false) } catch {}
-  $green=[System.Drawing.Color]::FromArgb(0,255,102); $dim=[System.Drawing.Color]::FromArgb(124,255,176); $boxBg=[System.Drawing.Color]::FromArgb(0,26,10)
+  # the panel wears the same theme as the quiz (defaults.theme); rain on by default, themed
+  $script:pn_theme = [string](Get-Prop $script:cfg.defaults 'theme' 'green')
+  if ($script:pn_theme -eq 'roulette') { $script:pn_theme = 'green' }   # panel uses a stable skin
+  $script:pn_pal = Get-PanelPalette $script:pn_theme
+  $script:pn_mr = $true
+  try { if ($script:cfg.defaults.PSObject.Properties.Name -contains 'panelRain') { $script:pn_mr = [bool]$script:cfg.defaults.panelRain } } catch {}
+  $green=$script:pn_pal.Accent; $dim=$script:pn_pal.Dim; $boxBg=$script:pn_pal.Field
   $fL=New-Object System.Drawing.Font('Consolas',10); $fLb=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold)
 
   $script:pn_form = New-Object System.Windows.Forms.Form
@@ -792,14 +871,40 @@ function Show-PanelGui {
   $script:pn_form.WindowState = 'Maximized'; $script:pn_form.BackColor = [System.Drawing.Color]::Black
   $ico = Join-Path $script:eng 'override.ico'; if (Test-Path $ico) { try { $script:pn_form.Icon = New-Object System.Drawing.Icon $ico } catch {} }
 
-  $script:pn_rain = New-RainBackground -Fps 8 -FontSize 18
+  $script:pn_rain = New-RainBackground -Fps 6 -FontSize 20 -Color $script:pn_pal.Rain   # 6fps/larger glyphs = lighter on a busy machine
   $script:pn_form.Controls.Add($script:pn_rain.Panel)
 
-  $script:pn_box = New-Object System.Windows.Forms.Panel; $script:pn_box.Width=1000; $script:pn_box.Height=820; $script:pn_box.BackColor=[System.Drawing.Color]::FromArgb(0,12,5)
-  $script:pn_box.Add_Paint({ param($s,$e) $r=$s.ClientRectangle; $pen=New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(0,255,102)),2; $e.Graphics.DrawRectangle($pen,1,1,$r.Width-3,$r.Height-3); $pen.Dispose() })
+  $script:pn_box = New-Object System.Windows.Forms.Panel; $script:pn_box.Width=1000; $script:pn_box.Height=820; $script:pn_box.BackColor=$script:pn_pal.Box
+  # themed paint: faint CRT scanlines + a layered neon glow border (3 fading passes) in the accent
+  $script:pn_box.Add_Paint({ param($s,$e)
+    $r=$s.ClientRectangle; $g=$e.Graphics
+    $sc=New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(26,$script:pn_pal.Scan.R,$script:pn_pal.Scan.G,$script:pn_pal.Scan.B))
+    for ($y=0;$y -lt $r.Height;$y+=3) { $g.DrawLine($sc,0,$y,$r.Width,$y) }; $sc.Dispose()
+    $a=$script:pn_pal.Accent; $gl=$script:pn_pal.Glow
+    # outward glow: wide faint -> tighter brighter (simulated bloom)
+    foreach ($p in @(@(10,26),@(7,40),@(4,70))) {
+      $pen=New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb($p[1],$gl.R,$gl.G,$gl.B)),$p[0]
+      $g.DrawRectangle($pen, [int]($p[0]/2)+1, [int]($p[0]/2)+1, $r.Width-$p[0]-2, $r.Height-$p[0]-2); $pen.Dispose()
+    }
+    $pen=New-Object System.Drawing.Pen $a,2; $g.DrawRectangle($pen,1,1,$r.Width-3,$r.Height-3); $pen.Dispose()
+  })
   $script:pn_form.Controls.Add($script:pn_box); $script:pn_rain.Panel.SendToBack()
 
-  $hdr = New-Object System.Windows.Forms.Label; $hdr.Text=("OVERRIDE // CONTROL v4   "+[char]0x03A9); $hdr.Left=18; $hdr.Top=14; $hdr.Width=680; $hdr.Height=40; $hdr.ForeColor=$green; $hdr.BackColor=[System.Drawing.Color]::Transparent; $hdr.Font=New-Object System.Drawing.Font('Consolas',22,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($hdr)
+  $hdr = New-Object System.Windows.Forms.Label; $hdr.Text=("OVERRIDE // CONTROL   "+[char]0x03A9); $hdr.Left=18; $hdr.Top=12; $hdr.Width=680; $hdr.Height=42; $hdr.ForeColor=$script:pn_pal.Accent; $hdr.BackColor=[System.Drawing.Color]::Transparent; $hdr.Font=New-Object System.Drawing.Font('Consolas',24,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($hdr)
+  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v4"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
+  # APP THEME — skins THIS control panel (separate from each alarm's own ALARM THEME). Live re-skin.
+  $appLbl = New-Object System.Windows.Forms.Label; $appLbl.Text="APP THEME"; $appLbl.Left=600; $appLbl.Top=52; $appLbl.Width=120; $appLbl.Height=20; $appLbl.TextAlign='MiddleRight'; $appLbl.ForeColor=$script:pn_pal.Accent2; $appLbl.BackColor=[System.Drawing.Color]::Transparent; $appLbl.Font=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($appLbl)
+  $script:pn_appTheme = New-Object System.Windows.Forms.ComboBox; $script:pn_appTheme.Left=728; $script:pn_appTheme.Top=49; $script:pn_appTheme.Width=130; $script:pn_appTheme.DropDownStyle='DropDownList'; $script:pn_appTheme.Items.AddRange(@('green','red','cyber','crt')); $script:pn_appTheme.BackColor=$script:pn_pal.Field; $script:pn_appTheme.ForeColor=$script:pn_pal.Accent; $script:pn_appTheme.Font=$fLb
+  $script:pn_appTheme.SelectedItem = $script:pn_theme
+  $script:pn_appTheme.Add_SelectedIndexChanged({
+    $sel = [string]$script:pn_appTheme.SelectedItem
+    if ($sel -and $sel -ne $script:pn_theme) {
+      if ($script:cfg.defaults.PSObject.Properties.Name -contains 'theme') { $script:cfg.defaults.theme = $sel } else { $script:cfg.defaults | Add-Member -NotePropertyName theme -NotePropertyValue $sel -Force }
+      Panel-SaveConfig
+      $script:pn_restart = $true; $script:pn_form.Close()
+    }
+  })
+  $script:pn_box.Controls.Add($script:pn_appTheme)
   $script:pn_armed = New-Object System.Windows.Forms.Label; $script:pn_armed.Left=760; $script:pn_armed.Top=22; $script:pn_armed.Width=220; $script:pn_armed.Height=26; $script:pn_armed.TextAlign='MiddleRight'; $script:pn_armed.BackColor=[System.Drawing.Color]::Transparent; $script:pn_armed.Font=New-Object System.Drawing.Font('Consolas',13,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($script:pn_armed)
 
   $lh = New-Object System.Windows.Forms.Label; $lh.Text="ALARMS"; $lh.Left=20; $lh.Top=60; $lh.Width=200; $lh.ForeColor=$dim; $lh.BackColor=[System.Drawing.Color]::Transparent; $lh.Font=$fLb; $script:pn_box.Controls.Add($lh)
@@ -829,9 +934,9 @@ function Show-PanelGui {
   $script:pn_eRain = New-Object System.Windows.Forms.CheckBox; $script:pn_eRain.Text="matrix rain"; $script:pn_eRain.Left=790; $script:pn_eRain.Top=($r2+2); $script:pn_eRain.Width=130; $script:pn_eRain.ForeColor=$dim; $script:pn_eRain.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eRain.Font=$fL; $script:pn_box.Controls.Add($script:pn_eRain)
 
   $r2b = 416
-  (NewLbl "theme" 24 ($r2b+4) 60 $false) | Out-Null
-  $script:pn_eTheme = New-Object System.Windows.Forms.ComboBox; $script:pn_eTheme.Left=104; $script:pn_eTheme.Top=$r2b; $script:pn_eTheme.Width=140; $script:pn_eTheme.DropDownStyle='DropDownList'; $script:pn_eTheme.Items.AddRange($script:THEMES); $script:pn_box.Controls.Add($script:pn_eTheme)
-  (NewLbl "green = phosphor classic | red = alert | cyber = neon | crt = deep CRT monitor | roulette = random every alarm" 260 ($r2b+5) 720 $true) | Out-Null
+  (NewLbl "ALARM THEME" 24 ($r2b+4) 110 $false) | Out-Null
+  $script:pn_eTheme = New-Object System.Windows.Forms.ComboBox; $script:pn_eTheme.Left=140; $script:pn_eTheme.Top=$r2b; $script:pn_eTheme.Width=140; $script:pn_eTheme.DropDownStyle='DropDownList'; $script:pn_eTheme.Items.AddRange($script:THEMES); $script:pn_box.Controls.Add($script:pn_eTheme)
+  (NewLbl "look of THIS alarm's ring  ( green=phosphor  red=alert  cyber=neon  crt=CRT  roulette=random each ring )" 294 ($r2b+5) 700 $true) | Out-Null
 
   $r3 = 460
   (NewLbl "subjects" 24 ($r3+2) 80 $false) | Out-Null
@@ -874,6 +979,9 @@ function Show-PanelGui {
 
   try { [void]$script:pn_form.ShowDialog() }
   finally {
+    # if a debounced arm was still pending when the window closed, flush it now (synchronously)
+    try { if ($script:pn_armTimer -and $script:pn_armTimer.Enabled) { $script:pn_armTimer.Stop(); Register-Alarms } } catch {}
+    try { if ($script:pn_armTimer) { $script:pn_armTimer.Dispose(); $script:pn_armTimer = $null } } catch {}
     try { $script:pn_rain.Timer.Stop(); $script:pn_rain.Timer.Dispose() } catch {}
     try { $script:pn_statusTimer.Stop(); $script:pn_statusTimer.Dispose() } catch {}
     try { if ($script:pn_auto) { $script:pn_auto.Dispose() } } catch {}
@@ -904,4 +1012,5 @@ if ($Ring) {
 
 $script:pn_testSec = $PanelTestSec
 $script:pn_autoDeploy = $AutoDeploy
-Show-PanelGui
+# restart loop: changing the APP THEME sets pn_restart + closes the form -> rebuild with the new skin
+do { $script:pn_restart = $false; Show-PanelGui; $script:pn_testSec = 0; $script:pn_autoDeploy = $false } while ($script:pn_restart)

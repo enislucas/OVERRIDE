@@ -6,8 +6,9 @@ arm.log
 probe.ok
 *.bak
 
-# v3 user state (created/imported by the panel on first run)
+# v3/v4 user state (created/imported by the panel; the alarm lives in the Windows task, not here)
 v3/config.json
+v4/config.json
 
 # user-supplied audio (may be copyrighted). The built-in sounds live in sounds/
 # and can be regenerated any time with make_sounds.ps1
