@@ -31,7 +31,7 @@ $script:THEMES = @('green','red','cyber','crt','roulette')
 function New-DefaultConfig {
   $cats = [ordered]@{}; foreach ($c in $script:CATS) { $cats[$c] = ($c -eq 'arithmetic') }
   [pscustomobject]@{ version = 5
-    defaults = [pscustomobject]@{ difficulty='hard'; numQuestions=3; durationMin=3; lockVolume=$true; narrator=$true; matrixRain=$true; theme='green'; renderer='auto'; edgeMinFreeMB=900; lockdownMaxMin=6; categories=[pscustomobject]$cats }
+    defaults = [pscustomobject]@{ difficulty='hard'; numQuestions=3; durationMin=3; lockVolume=$true; narrator=$true; matrixRain=$true; theme='green'; renderer='auto'; edgeMinFreeMB=900; lockdownMaxMin=6; autoBurn=$true; categories=[pscustomobject]$cats }
     alarms   = @() }
 }
 function Load-Config {
@@ -844,6 +844,23 @@ function Panel-RefreshArmed {
   $on = if ($script:pn_pal) { $script:pn_pal.Accent } else { [System.Drawing.Color]::FromArgb(0,255,102) }
   if ($armed -gt 0) { $script:pn_armed.Text = "ARMED ($armed)"; $script:pn_armed.ForeColor = $on } else { $script:pn_armed.Text = "NOT ARMED"; $script:pn_armed.ForeColor = [System.Drawing.Color]::FromArgb(255,140,0) }
 }
+# ---- auto-burn: delete expired one-time (non-rhythm) alarms 24h after they fired -------------
+function Test-AlarmStale($al) {
+  if ($al.Rhythm) { return $false }          # daily/rhythm alarms recur forever — never burn
+  if (-not $al.Date) { return $false }        # no concrete date -> can't age it -> keep
+  try {
+    $dt = [datetime]::ParseExact("$($al.Date) $($al.Time)", 'yyyy-MM-dd HH:mm', [System.Globalization.CultureInfo]::InvariantCulture)
+    return (((Get-Date) - $dt).TotalHours -gt 24)
+  } catch { return $false }                   # unparseable -> keep (never burn on uncertainty)
+}
+function Burn-StaleAlarms {
+  if (-not $script:pn_autoBurn) { return 0 }
+  $before = @($script:pn_alarms).Count
+  $kept = @($script:pn_alarms | Where-Object { -not (Test-AlarmStale $_) })
+  $burned = $before - @($kept).Count
+  if ($burned -gt 0) { $script:pn_alarms = $kept }
+  return $burned
+}
 function Panel-UpdateStatus {
   $next = $null
   foreach ($al in $script:pn_alarms) { if (-not $al.Enabled) { continue }; $w = Resolve-When $al.Time $al.Date $al.Rhythm; if ($w -and ((-not $next) -or ($w -lt $next))) { $next = $w } }
@@ -909,6 +926,9 @@ function Show-PanelGui {
   if (-not (Test-RingActive)) { Set-TaskMgrDisabled $false }
   if (-not (Test-Path $script:cfgPath)) { if (Import-PriorConfig) { } }
   Panel-LoadAlarms
+  # auto-burn: drop expired one-time alarms on open (default on); persist if anything was removed
+  $script:pn_autoBurn = [bool](Get-Prop $script:cfg.defaults 'autoBurn' $true)
+  if ((Burn-StaleAlarms) -gt 0) { Panel-SaveConfig }
   # the panel wears the same theme as the quiz (defaults.theme); rain on by default, themed
   $script:pn_theme = [string](Get-Prop $script:cfg.defaults 'theme' 'green')
   if ($script:pn_theme -eq 'roulette') { $script:pn_theme = 'green' }   # panel uses a stable skin
@@ -958,7 +978,19 @@ function Show-PanelGui {
     }
   })
   $script:pn_box.Controls.Add($script:pn_appTheme)
-  $script:pn_armed = New-Object System.Windows.Forms.Label; $script:pn_armed.Left=760; $script:pn_armed.Top=22; $script:pn_armed.Width=220; $script:pn_armed.Height=26; $script:pn_armed.TextAlign='MiddleRight'; $script:pn_armed.BackColor=[System.Drawing.Color]::Transparent; $script:pn_armed.Font=New-Object System.Drawing.Font('Consolas',13,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($script:pn_armed)
+  $script:pn_armed = New-Object System.Windows.Forms.Label; $script:pn_armed.Left=842; $script:pn_armed.Top=22; $script:pn_armed.Width=148; $script:pn_armed.Height=26; $script:pn_armed.TextAlign='MiddleRight'; $script:pn_armed.BackColor=[System.Drawing.Color]::Transparent; $script:pn_armed.Font=New-Object System.Drawing.Font('Consolas',13,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($script:pn_armed)
+  # AUTO-BURN toggle (top-right): delete expired one-time alarms 24h after they fire
+  $script:pn_eBurn = New-Object System.Windows.Forms.CheckBox; $script:pn_eBurn.Text="auto-burn old alarms (24h)"; $script:pn_eBurn.Left=556; $script:pn_eBurn.Top=24; $script:pn_eBurn.Width=280; $script:pn_eBurn.Height=22; $script:pn_eBurn.ForeColor=$script:pn_pal.Accent2; $script:pn_eBurn.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eBurn.Font=$fL; $script:pn_eBurn.Checked=$script:pn_autoBurn; $script:pn_box.Controls.Add($script:pn_eBurn)
+  $script:pn_tip = New-Object System.Windows.Forms.ToolTip; $script:pn_tip.SetToolTip($script:pn_eBurn, "Auto-delete one-time (non-repeating) alarms 24h after their time has passed.`r`nDaily 'rhythm' alarms are NEVER burned.")
+  $script:pn_eBurn.Add_CheckedChanged({
+    $script:pn_autoBurn = [bool]$script:pn_eBurn.Checked
+    if ($script:cfg.defaults.PSObject.Properties.Name -contains 'autoBurn') { $script:cfg.defaults.autoBurn = $script:pn_autoBurn } else { $script:cfg.defaults | Add-Member -NotePropertyName autoBurn -NotePropertyValue $script:pn_autoBurn -Force }
+    if ($script:pn_autoBurn) {
+      $n = Burn-StaleAlarms
+      if ($n -gt 0) { Panel-Persist; Panel-RenderRows; Panel-RefreshArmed; Panel-UpdateStatus; Panel-Log "auto-burn ON - removed $n expired alarm(s)" }
+      else { Panel-SaveConfig; Panel-Log "auto-burn ON - nothing expired yet" }
+    } else { Panel-SaveConfig; Panel-Log "auto-burn OFF - old one-time alarms will be kept" }
+  })
 
   $lh = New-Object System.Windows.Forms.Label; $lh.Text="ALARMS"; $lh.Left=20; $lh.Top=60; $lh.Width=200; $lh.ForeColor=$dim; $lh.BackColor=[System.Drawing.Color]::Transparent; $lh.Font=$fLb; $script:pn_box.Controls.Add($lh)
   $script:pn_list = New-Object System.Windows.Forms.Panel; $script:pn_list.Left=12; $script:pn_list.Top=84; $script:pn_list.Width=976; $script:pn_list.Height=190; $script:pn_list.AutoScroll=$true; $script:pn_list.BackColor=[System.Drawing.Color]::FromArgb(0,8,3); $script:pn_box.Controls.Add($script:pn_list)
@@ -1019,7 +1051,12 @@ function Show-PanelGui {
   $script:pn_log = New-Object System.Windows.Forms.Label; $script:pn_log.Left=24; $script:pn_log.Top=714; $script:pn_log.Width=956; $script:pn_log.Height=22; $script:pn_log.ForeColor=[System.Drawing.Color]::FromArgb(90,170,120); $script:pn_log.BackColor=[System.Drawing.Color]::Transparent; $script:pn_log.Font=$fL; $script:pn_box.Controls.Add($script:pn_log)
   $hint = New-Object System.Windows.Forms.Label; $hint.Text="Edge kiosk renderer + mshta fallback  |  4 themes + roulette  |  12 subjects per alarm  |  0% CPU between alarms"; $hint.Left=24; $hint.Top=740; $hint.Width=956; $hint.Height=20; $hint.ForeColor=[System.Drawing.Color]::FromArgb(70,130,95); $hint.BackColor=[System.Drawing.Color]::Transparent; $hint.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($hint)
 
-  $script:pn_statusTimer = New-Object System.Windows.Forms.Timer; $script:pn_statusTimer.Interval = 1000; $script:pn_statusTimer.Add_Tick({ Panel-UpdateStatus; if ($script:pn_mr) { $script:pn_tick++; if (($script:pn_tick % 11) -eq 0) { Panel-Glitch } } })
+  $script:pn_statusTimer = New-Object System.Windows.Forms.Timer; $script:pn_statusTimer.Interval = 1000; $script:pn_statusTimer.Add_Tick({
+    Panel-UpdateStatus
+    if ($script:pn_mr) { $script:pn_tick++; if (($script:pn_tick % 11) -eq 0) { Panel-Glitch } }
+    # self-clean while the panel stays open: every ~60s, burn anything that just crossed 24h (Burn-StaleAlarms no-ops when the toggle is off)
+    $script:pn_burnTick++; if (($script:pn_burnTick % 60) -eq 0) { $bn = Burn-StaleAlarms; if ($bn -gt 0) { Panel-SaveConfig; Panel-RenderRows; Panel-RefreshArmed; Panel-Log "auto-burned $bn expired alarm(s)" } }
+  })
   $script:pn_form.Add_Activated({ try { if ($script:pn_mr -and $script:pn_form.WindowState -ne 'Minimized') { $script:pn_rain.Timer.Start() } } catch {} })
   $script:pn_form.Add_Deactivate({ try { $script:pn_rain.Timer.Stop() } catch {} })
   $script:pn_form.Add_Resize({ Panel-Reposition; try { if ($script:pn_form.WindowState -eq 'Minimized') { $script:pn_rain.Timer.Stop() } elseif ($script:pn_mr) { $script:pn_rain.Timer.Start() } } catch {} })

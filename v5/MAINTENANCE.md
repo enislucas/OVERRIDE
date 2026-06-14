@@ -47,7 +47,12 @@ quiz (quiz/quiz.hta on Windows, quiz/quiz.html in a browser kiosk elsewhere)
             ring's python3 localhost listener (port 8741)
 ```
 
-Session files live in the **v3 root** (`quiz.hta` computes `parent(dir(self))`).
+**Auto-burn (v5):** the panel deletes expired ONE-TIME alarms 24h after their time
+(`Test-AlarmStale`/`Burn-StaleAlarms`); rhythm/daily alarms are never touched. Runs on panel
+open + every ~60s while open; toggled by `defaults.autoBurn` (default true) via the top-right
+"auto-burn old alarms (24h)" checkbox. Burning only rewrites config (past one-times aren't armed).
+
+Session files live in the **v5 root** (`quiz.hta` computes `parent(dir(self))`).
 `UNLOCK` must contain the exact key from `session.key` — prevents a stale quiz from a
 previous ring solving a new one. `PANIC` (create the file by hand) ends any ring: the
 documented human escape hatch.
