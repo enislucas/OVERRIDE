@@ -1,0 +1,38 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>F</title><style>
+html,body{height:100%;margin:0;background:#000;font-family:"Cascadia Mono",Consolas,monospace;overflow:hidden}
+.bezel{position:fixed;inset:0;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.95) 100%)}
+.screen{position:fixed;inset:18px;border-radius:48px/38px;overflow:hidden;background:#020a04;
+ box-shadow:inset 0 0 120px rgba(0,0,0,.95),inset 0 0 40px rgba(0,80,30,.4),0 0 30px rgba(0,255,102,.15)}
+.scan{position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.34) 0 2px,transparent 2px 5px);pointer-events:none;z-index:5}
+.glow{position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(0,255,102,.10) 0%,transparent 60%);pointer-events:none;z-index:4}
+.flicker{position:absolute;inset:0;background:rgba(120,255,170,.03);z-index:6;animation:fl .12s infinite}
+@keyframes fl{50%{opacity:.4}}
+.wrap{display:flex;align-items:center;justify-content:center;height:100%;position:relative;z-index:2}
+.inner{width:880px}
+.hdr{font-size:13px;letter-spacing:3px;color:#19c97a;margin-bottom:26px;
+ text-shadow:1px 0 rgba(255,60,60,.45),-1px 0 rgba(60,120,255,.45),0 0 10px rgba(0,255,102,.8)}
+.clock{float:right;font-size:20px;color:#7CFFB0;text-shadow:1px 0 rgba(255,60,60,.5),-1px 0 rgba(60,120,255,.5),0 0 12px #0f8}
+h1{font-size:40px;color:#2cff8c;margin:0 0 8px;letter-spacing:2px;
+ text-shadow:1.5px 0 rgba(255,60,60,.55),-1.5px 0 rgba(60,120,255,.55),0 0 22px rgba(0,255,102,.9),0 0 60px rgba(0,255,102,.4)}
+.sub{font-size:15px;color:#19c97a;margin-bottom:24px;text-shadow:0 0 8px rgba(0,255,102,.6)}
+.line{font-size:15px;color:#0f9460;margin:4px 0;text-shadow:0 0 6px rgba(0,255,102,.5)}
+.q{font-size:42px;color:#b8ffd9;margin:26px 0 22px;text-shadow:1.5px 0 rgba(255,60,60,.5),-1.5px 0 rgba(60,120,255,.5),0 0 18px rgba(0,255,102,.8)}
+.inp{font-size:30px;color:#b8ffd9;text-shadow:0 0 10px rgba(0,255,102,.7)}
+.cursor{display:inline-block;width:18px;height:32px;background:#2cff8c;vertical-align:middle;box-shadow:0 0 14px rgba(0,255,102,.9);animation:bl 1s steps(1) infinite}
+@keyframes bl{50%{opacity:0}}
+</style></head><body>
+<div class="screen">
+<div class="glow"></div><div class="scan"></div><div class="flicker"></div>
+<div class="wrap"><div class="inner">
+<div class="hdr"><span class="clock">02:41</span>OVERRIDE // WAKE PROTOCOL [ WAKE UP ]</div>
+<h1>IDENTITY VERIFICATION</h1>
+<div class="sub">&gt; subject must answer to prove consciousness_</div>
+<div class="line">&gt; verified . . . . . . . . . . 1 / 3</div>
+<div class="line">&gt; subject status . . . . . . . HORIZONTAL (pathetic)</div>
+<div class="line">&gt; category . . . . . . . . . . ARITHMETIC</div>
+<div class="q">&gt; 47 &#215; 28 = ?</div>
+<div class="inp">&gt; 131<span class="cursor"></span></div>
+</div></div>
+</div>
+<div class="bezel"></div>
+</body></html>

@@ -1,0 +1,21 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>fx5</title><style>
+html,body{height:100%;margin:0;background:#000;overflow:hidden;font-family:Consolas,monospace}
+.half{position:fixed;top:0;height:100%;width:50%;overflow:hidden}
+.L{left:0}.R{right:0}
+.demo{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;width:90%}
+.demo h2{color:#2cff8c;font-size:34px;margin:0 0 12px}
+.demo p{color:#7CFFB0;font-size:16px}
+.R .scan{position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.32) 0 2px,transparent 2px 5px)}
+.R .vig{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 45%,rgba(0,0,0,.75) 100%)}
+.R .demo h2{text-shadow:1.4px 0 rgba(255,60,60,.5),-1.4px 0 rgba(60,120,255,.5),0 0 20px rgba(0,255,102,.9)}
+.R .demo p{text-shadow:0 0 8px rgba(0,255,102,.6)}
+.divider{position:fixed;left:50%;top:0;height:100%;width:2px;background:#00ff66;z-index:9;box-shadow:0 0 14px rgba(0,255,102,.8)}
+.cap{position:fixed;top:34px;width:50%;text-align:center;color:#0a7;font-size:14px;letter-spacing:3px}
+.tag{position:fixed;left:40px;bottom:34px;color:#aeffd2;font-size:22px;letter-spacing:3px;background:rgba(0,16,6,.85);border:1px solid #00ff66;padding:14px 24px;z-index:10}
+</style></head><body>
+<div class="half L"><div class="demo"><h2>WITHOUT CRT LAYER</h2><p>flat text, no scanlines, no fringe</p><p style="font-size:30px;color:#aeffd2">47 &#215; 28 = ?</p></div></div>
+<div class="half R"><div class="demo"><h2>WITH CRT LAYER</h2><p>scanlines + RGB fringe + glow + vignette + faint flicker</p><p style="font-size:30px;color:#b8ffd9;text-shadow:1.4px 0 rgba(255,60,60,.5),-1.4px 0 rgba(60,120,255,.5),0 0 16px rgba(0,255,102,.8)">47 &#215; 28 = ?</p></div><div class="scan"></div><div class="vig"></div></div>
+<div class="divider"></div>
+<div class="cap" style="left:0">plain</div><div class="cap" style="left:50%">CRT overlay (static CSS = free)</div>
+<div class="tag">effect_05_crt_overlay</div>
+</body></html>

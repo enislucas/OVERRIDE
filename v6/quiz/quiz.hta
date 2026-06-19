@@ -1,0 +1,91 @@
+<HTA:APPLICATION ID="app" APPLICATIONNAME="OverrideGate" BORDER="none" CAPTION="no"
+  SHOWINTASKBAR="no" SINGLEINSTANCE="yes" SYSMENU="no" MAXIMIZEBUTTON="no" MINIMIZEBUTTON="no"
+  WINDOWSTATE="maximize" SCROLL="no" CONTEXTMENU="no" SELECTION="no" />
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>OVERRIDE // identity check</title>
+<!-- FALLBACK shell: used only when Edge is unavailable. Inherits v3's bug-museum fixes:
+     #15 NO <link rel=stylesheet> here (mshta drops it + the HTA settings) -> CSS is
+         injected from disk at boot, with an inline black/green fallback below.
+     The X-UA-Compatible meta is LOAD-BEARING (quirks mode breaks centring). -->
+<style type="text/css">
+  html,body{height:100%;margin:0;background:#000;overflow:hidden;color:#00ff66;
+    font-family:Consolas,"Lucida Console",monospace;}
+</style>
+<script type="text/javascript" src="core.js"></script>
+<script type="text/javascript">
+var ROOT = "", QDIR = "", VOICE = null, QUIZ_START = new Date();
+
+function fso(){ return new ActiveXObject("Scripting.FileSystemObject"); }
+function readFile(p){
+  try{ if(!fso().FileExists(p)) return "";
+    var f=fso().OpenTextFile(p,1,false,0); var s=f.ReadAll(); f.Close(); return s;
+  }catch(e){ return ""; }
+}
+function findDirs(){
+  var u=""; try{ u=location.href; }catch(e){} if(!u){ try{ u=document.URL; }catch(e){} }
+  u=u.replace(/^file:\/+/i,""); try{ u=decodeURIComponent(u); }catch(e){}
+  u=u.replace(/\//g,"\\"); var i=u.lastIndexOf("\\");
+  QDIR=(i>0)?u.substring(0,i):u;
+  var j=QDIR.lastIndexOf("\\"); ROOT=(j>0)?QDIR.substring(0,j):QDIR;
+}
+function injectCss(){
+  var css=readFile(QDIR+"\\style.css"); if(!css) return;
+  try{
+    var st=document.createElement('style'); st.type='text/css';
+    if(st.styleSheet){ st.styleSheet.cssText=css; } else { st.appendChild(document.createTextNode(css)); }
+    document.getElementsByTagName('head')[0].appendChild(st);
+  }catch(e){}
+}
+function speakSapi(t){
+  try{
+    if(!VOICE){ VOICE=new ActiveXObject("SAPI.SpVoice"); VOICE.Volume=100; }
+    try{ var vs=VOICE.GetVoices(); if(vs.Count>1){ VOICE.Voice=vs.Item(Math.floor(Math.random()*vs.Count)); } }catch(e1){}
+    VOICE.Rate = Math.floor(Math.random()*3)-1;
+    VOICE.Speak(t, 3);
+  }catch(e){}
+}
+function engineGone(){
+  if(((new Date())-QUIZ_START) < 10000) return false;
+  try{
+    var f=ROOT+"\\session.beat", o=fso();
+    if(!o.FileExists(f)) return true;
+    var age=(new Date())-(new Date(o.GetFile(f).DateLastModified));
+    return age>6000;
+  }catch(e){ return false; }
+}
+function boot(){
+  findDirs(); injectCss(); QUIZ_START=new Date();
+  var KEY=OVERRIDE_CORE.trim(readFile(ROOT+"\\session.key"));
+  var label=OVERRIDE_CORE.trim(readFile(ROOT+"\\session.label")) || "SYSTEM";
+  var n=3, diff="hard", cats=["arithmetic"], rain=false, deadlineMs=0, theme="green", user="";
+  var s=readFile(ROOT+"\\session.quizcfg");
+  if(s){ try{ var c=eval("("+s+")");
+    if(c.numQuestions) n=parseInt(c.numQuestions,10);
+    if(c.difficulty) diff=String(c.difficulty);
+    if(c.categories){ var arr=[],k; for(k in c.categories){ if(c.categories[k]) arr.push(k); } if(arr.length) cats=arr; }
+    if(c.matrixRain) rain=true;
+    if(c.theme) theme=String(c.theme);
+    if(c.user) user=String(c.user);
+  }catch(e){} }
+  var dm=OVERRIDE_CORE.trim(readFile(ROOT+"\\session.deadlinems"));
+  if(dm){ var v=parseInt(dm,10); if(!isNaN(v)) deadlineMs=v; }
+
+  OVERRIDE_UI.init({
+    label: label, numQuestions: n, difficulty: diff, cats: cats,
+    matrixRain: rain, deadlineMs: deadlineMs, theme: theme, user: user,
+    speak: speakSapi,
+    unlock: function(){
+      try{ var f=fso().CreateTextFile(ROOT+"\\UNLOCK",true); f.Write(KEY); f.Close(); }catch(e){}
+    },
+    engineGone: engineGone,
+    closeWin: function(){ try{ window.close(); }catch(e){} }
+  });
+}
+</script>
+</head>
+<body onload="boot()"></body>
+</html>
