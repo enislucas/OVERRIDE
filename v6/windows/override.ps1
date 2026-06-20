@@ -4,7 +4,8 @@ param(
   [switch]$DryRun, [switch]$Probe, [int]$PanelTestSec = 0, [switch]$AutoDeploy
 )
 # OVERRIDE v6 // WAKE PROTOCOL — Windows engine (THEMED edition, started as a frozen copy of v5)
-# v6 = adds alarm reordering (move up/down). v5 is the frozen rollback (tag v5-stable).
+# v6 = alarm reordering (move up/down). v6.2 = themed dropdowns (per-option colours + themed
+# arrow via the ThemedCombo class). v5 is the frozen rollback (tag v5-stable).
 # Same architecture as v3 (scheduled tasks -> one ephemeral ring, 0 CPU between alarms),
 # plus:
 #  - PRIMARY renderer: Edge kiosk showing quiz/quiz.html (GPU-composited, modern CSS,
@@ -158,6 +159,44 @@ public static class FallbackSound {
 "@
 try { Add-Type -TypeDefinition $sndSrc -Language CSharp } catch {}
 
+# themed combo box (v6.2): owner-drawn so the ugly white system dropdown arrow is replaced by a
+# theme-coloured one, and every option can paint its own background. Items are owner-drawn in
+# PowerShell (Add_DrawItem); this class just (a) forces owner-draw + flat, (b) overpaints the
+# arrow + border in the accent colour after each WM_PAINT (try/caught so a draw glitch can never
+# crash the panel).
+$comboSrc = @"
+using System; using System.Drawing; using System.Windows.Forms;
+public class ThemedCombo : ComboBox {
+  public Color ArrowColor = Color.FromArgb(0,255,120);
+  public Color ArrowBack  = Color.FromArgb(0,16,7);
+  public Color BorderCol  = Color.FromArgb(0,255,120);
+  public ThemedCombo() {
+    this.DropDownStyle = ComboBoxStyle.DropDownList;
+    this.FlatStyle = FlatStyle.Flat;
+    this.DrawMode = DrawMode.OwnerDrawFixed;
+    this.ItemHeight = 22;
+  }
+  protected override void WndProc(ref Message m) {
+    base.WndProc(ref m);
+    if (m.Msg == 0x000F) { // WM_PAINT
+      try {
+        using (Graphics g = Graphics.FromHwnd(this.Handle)) {
+          int aw = 18, h = this.ClientSize.Height, w = this.ClientSize.Width;
+          Rectangle r = new Rectangle(w - aw, 0, aw, h);
+          using (SolidBrush bb = new SolidBrush(this.ArrowBack)) g.FillRectangle(bb, r);
+          using (Pen dp = new Pen(this.ArrowColor)) g.DrawLine(dp, r.Left, 3, r.Left, h - 3);
+          int cx = r.Left + aw / 2, cy = h / 2;
+          Point[] tri = new Point[] { new Point(cx - 4, cy - 2), new Point(cx + 5, cy - 2), new Point(cx, cy + 4) };
+          using (SolidBrush tb = new SolidBrush(this.ArrowColor)) g.FillPolygon(tb, tri);
+          using (Pen bp = new Pen(this.BorderCol)) g.DrawRectangle(bp, 0, 0, w - 1, h - 1);
+        }
+      } catch { }
+    }
+  }
+}
+"@
+try { Add-Type -TypeDefinition $comboSrc -Language CSharp -ReferencedAssemblies System.Windows.Forms,System.Drawing } catch {}
+
 # ---- lockdown helpers ------------------------------------------------------
 function Set-TaskMgrDisabled([bool]$on) {
   try {
@@ -242,6 +281,49 @@ function Get-PanelPalette([string]$theme) {
     'crt'   { @{ Accent=(C 60 255 150); Accent2=(C 0 230 130);  Dim=(C 150 255 200); Box=(C 2 16 7);  Field=(C 0 30 13);  Row=(C 0 28 12); Glow=(C 0 255 120);  Rain=(C 60 255 150); Scan=(C 0 48 20) } }
     default { @{ Accent=(C 0 255 120);  Accent2=(C 120 255 90);  Dim=(C 150 255 195); Box=(C 0 16 7);  Field=(C 0 32 14);  Row=(C 0 28 12); Glow=(C 0 255 120);  Rain=(C 0 255 120);  Scan=(C 0 40 18) } }
   }
+}
+# per-OPTION colours for the themed dropdowns (v6.2): each theme name paints its own background
+# (a left->right gradient) with high-contrast text that stays readable. Mirrors the quiz themes.
+function Get-ComboOptionColors([string]$name) {
+  switch ($name) {
+    'green'    { @{ A=(C 0 30 13);   B=(C 0 52 22);   Fg=(C 130 255 165) } }   # phosphor green
+    'red'      { @{ A=(C 36 0 8);    B=(C 78 4 14);   Fg=(C 255 110 122) } }   # alert red
+    'cyber'    { @{ A=(C 0 44 60);   B=(C 52 0 64);   Fg=(C 240 250 255) } }   # cyan -> magenta
+    'crt'      { @{ A=(C 1 22 10);   B=(C 3 40 18);   Fg=(C 80 255 160) } }    # deep CRT green
+    'roulette' { @{ A=(C 12 10 28);  B=(C 44 6 44);   Fg=(C 215 210 255) } }   # mixed/lavender
+    default    { @{ A=(C 0 20 9);    B=(C 0 34 16);   Fg=(C 190 230 200) } }
+  }
+}
+$script:pn_comboDraw = {
+  param($s, $e)
+  if ($e.Index -lt 0) { try { $e.DrawBackground() } catch {}; return }
+  $name = [string]$s.Items[$e.Index]
+  $col = Get-ComboOptionColors $name
+  $r = $e.Bounds
+  try {
+    if ($r.Width -gt 0 -and $r.Height -gt 0) {
+      $gb = New-Object System.Drawing.Drawing2D.LinearGradientBrush ($r, $col.A, $col.B, ([System.Drawing.Drawing2D.LinearGradientMode]::Horizontal))
+      $e.Graphics.FillRectangle($gb, $r); $gb.Dispose()
+    }
+    if ((($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0) -and (($e.State -band [System.Windows.Forms.DrawItemState]::ComboBoxEdit) -eq 0)) {
+      $hp = New-Object System.Drawing.Pen ($col.Fg), 1; $e.Graphics.DrawRectangle($hp, $r.X, $r.Y, $r.Width-1, $r.Height-1); $hp.Dispose()
+    }
+    $tb = New-Object System.Drawing.SolidBrush ($col.Fg)
+    $e.Graphics.DrawString($name, $s.Font, $tb, [single]($r.X + 6), [single]($r.Y + 3)); $tb.Dispose()
+  } catch {}
+}
+# make a themed dropdown — falls back to a plain DropDownList if the custom class didn't compile
+function New-ThemeCombo {
+  try { return New-Object ThemedCombo } catch { $c = New-Object System.Windows.Forms.ComboBox; $c.DropDownStyle = 'DropDownList'; return $c }
+}
+# skin it to the panel's accent. BackColor/ForeColor always apply; the ThemedCombo-only bits
+# (arrow colours + owner-draw items) are attempted separately so a fallback combo still works.
+function Style-ThemeCombo($combo, $pal) {
+  try { $combo.BackColor = $pal.Box; $combo.ForeColor = $pal.Accent } catch {}
+  try {
+    $combo.ArrowColor = $pal.Accent; $combo.ArrowBack = $pal.Box; $combo.BorderCol = $pal.Accent
+    $combo.add_DrawItem($script:pn_comboDraw)
+  } catch {}
 }
 function Get-AlarmSettings($id) {
   Load-Config
@@ -959,7 +1041,7 @@ function Show-PanelGui {
   $fL=New-Object System.Drawing.Font('Consolas',10); $fLb=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold)
 
   $script:pn_form = New-Object System.Windows.Forms.Form
-  $script:pn_form.Text = "OVERRIDE // CONTROL v6"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
+  $script:pn_form.Text = "OVERRIDE // CONTROL v6.2"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
   $script:pn_form.StartPosition = 'CenterScreen'; $script:pn_form.MinimumSize = New-Object System.Drawing.Size(1040,860)
   $script:pn_form.WindowState = 'Maximized'; $script:pn_form.BackColor = [System.Drawing.Color]::Black
   $ico = Join-Path $script:eng 'override.ico'; if (Test-Path $ico) { try { $script:pn_form.Icon = New-Object System.Drawing.Icon $ico } catch {} }
@@ -984,10 +1066,10 @@ function Show-PanelGui {
   $script:pn_form.Controls.Add($script:pn_box); $script:pn_rain.Panel.SendToBack()
 
   $hdr = New-Object System.Windows.Forms.Label; $hdr.Text=("OVERRIDE // CONTROL   "+[char]0x03A9); $hdr.Left=18; $hdr.Top=12; $hdr.Width=680; $hdr.Height=42; $hdr.ForeColor=$script:pn_pal.Accent; $hdr.BackColor=[System.Drawing.Color]::Transparent; $hdr.Font=New-Object System.Drawing.Font('Consolas',24,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($hdr)
-  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v6"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
+  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v6.2"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
   # APP THEME — skins THIS control panel (separate from each alarm's own ALARM THEME). Live re-skin.
   $appLbl = New-Object System.Windows.Forms.Label; $appLbl.Text="APP THEME"; $appLbl.Left=600; $appLbl.Top=52; $appLbl.Width=120; $appLbl.Height=20; $appLbl.TextAlign='MiddleRight'; $appLbl.ForeColor=$script:pn_pal.Accent2; $appLbl.BackColor=[System.Drawing.Color]::Transparent; $appLbl.Font=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($appLbl)
-  $script:pn_appTheme = New-Object System.Windows.Forms.ComboBox; $script:pn_appTheme.Left=728; $script:pn_appTheme.Top=49; $script:pn_appTheme.Width=130; $script:pn_appTheme.DropDownStyle='DropDownList'; $script:pn_appTheme.Items.AddRange(@('green','red','cyber','crt')); $script:pn_appTheme.BackColor=$script:pn_pal.Field; $script:pn_appTheme.ForeColor=$script:pn_pal.Accent; $script:pn_appTheme.Font=$fLb
+  $script:pn_appTheme = New-ThemeCombo; $script:pn_appTheme.Left=728; $script:pn_appTheme.Top=49; $script:pn_appTheme.Width=130; $script:pn_appTheme.Items.AddRange(@('green','red','cyber','crt')); $script:pn_appTheme.Font=$fLb; Style-ThemeCombo $script:pn_appTheme $script:pn_pal
   $script:pn_appTheme.SelectedItem = $script:pn_theme
   $script:pn_appTheme.Add_SelectedIndexChanged({
     $sel = [string]$script:pn_appTheme.SelectedItem
@@ -1040,7 +1122,7 @@ function Show-PanelGui {
 
   $r2b = 416
   (NewLbl "ALARM THEME" 24 ($r2b+4) 110 $false) | Out-Null
-  $script:pn_eTheme = New-Object System.Windows.Forms.ComboBox; $script:pn_eTheme.Left=140; $script:pn_eTheme.Top=$r2b; $script:pn_eTheme.Width=140; $script:pn_eTheme.DropDownStyle='DropDownList'; $script:pn_eTheme.Items.AddRange($script:THEMES); $script:pn_box.Controls.Add($script:pn_eTheme)
+  $script:pn_eTheme = New-ThemeCombo; $script:pn_eTheme.Left=140; $script:pn_eTheme.Top=$r2b; $script:pn_eTheme.Width=140; $script:pn_eTheme.Font=$fL; $script:pn_eTheme.Items.AddRange($script:THEMES); Style-ThemeCombo $script:pn_eTheme $script:pn_pal; $script:pn_box.Controls.Add($script:pn_eTheme)
   (NewLbl "look of THIS alarm's ring  ( green=phosphor  red=alert  cyber=neon  crt=CRT  roulette=random each ring )" 294 ($r2b+5) 700 $true) | Out-Null
 
   $r3 = 460

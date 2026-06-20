@@ -51,6 +51,12 @@ quiz (quiz/quiz.hta on Windows, quiz/quiz.html in a browser kiosk elsewhere)
 neighbour in `pn_alarms`, then `Panel-Persist`+`Panel-RenderRows`. Top row's ▲ / bottom row's ▼
 are disabled. Order is cosmetic (alarms fire by scheduled time) but persists to config order.
 
+**Themed dropdowns (v6.2):** the APP THEME + ALARM THEME combos use the `ThemedCombo` C# class
+(`New-ThemeCombo` factory with a plain-combo fallback if it fails to compile). It owner-draws
+(`$script:pn_comboDraw` via `Get-ComboOptionColors`) so each option paints its own theme gradient
++ readable text, and its `WndProc` overpaints the white system arrow with a theme-coloured one
+(try/caught so a draw glitch can't crash the panel). `Style-ThemeCombo` skins it to the panel accent.
+
 **Auto-burn (v5):** the panel deletes expired ONE-TIME alarms 24h after their time
 (`Test-AlarmStale`/`Burn-StaleAlarms`); rhythm/daily alarms are never touched. Runs on panel
 open + every ~60s while open; toggled by `defaults.autoBurn` (default true) via the top-right
