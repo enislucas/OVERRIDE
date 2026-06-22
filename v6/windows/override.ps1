@@ -5,7 +5,8 @@ param(
 )
 # OVERRIDE v6 // WAKE PROTOCOL — Windows engine (THEMED edition, started as a frozen copy of v5)
 # v6 = alarm reordering (move up/down). v6.2 = themed dropdowns (per-option colours + themed
-# arrow via the ThemedCombo class). v5 is the frozen rollback (tag v5-stable).
+# arrow via the ThemedCombo class). v6.3 = themed checkboxes + difficulty/questions dropdowns +
+# a custom futuristic scrollbar for the alarm list (no white native bars). v5 = frozen rollback (tag v5-stable).
 # Same architecture as v3 (scheduled tasks -> one ephemeral ring, 0 CPU between alarms),
 # plus:
 #  - PRIMARY renderer: Edge kiosk showing quiz/quiz.html (GPU-composited, modern CSS,
@@ -197,6 +198,33 @@ public class ThemedCombo : ComboBox {
 "@
 try { Add-Type -TypeDefinition $comboSrc -Language CSharp -ReferencedAssemblies System.Windows.Forms,System.Drawing } catch {}
 
+# mouse-wheel router (v6.3): a Panel doesn't get MouseWheel events unless it has focus, so to make
+# the custom-scrolled alarm list respond to the wheel-while-hovering we install an app message
+# filter that catches WM_MOUSEWHEEL, and if the cursor is over the target panel, invokes a callback
+# with the wheel delta (without stealing focus from whatever the user is typing in).
+$wheelSrc = @"
+using System; using System.Drawing; using System.Windows.Forms;
+public class WheelFilter : IMessageFilter {
+  public Control Target; public Action<int> OnWheel;
+  public bool PreFilterMessage(ref Message m) {
+    if (m.Msg == 0x020A && Target != null && OnWheel != null) {
+      try {
+        if (Target.IsHandleCreated && Target.Visible) {
+          Rectangle r = Target.RectangleToScreen(Target.ClientRectangle);
+          if (r.Contains(Cursor.Position)) {
+            int delta = (short)(((long)m.WParam) >> 16);
+            OnWheel(delta);
+            return true;
+          }
+        }
+      } catch { }
+    }
+    return false;
+  }
+}
+"@
+try { Add-Type -TypeDefinition $wheelSrc -Language CSharp -ReferencedAssemblies System.Windows.Forms,System.Drawing } catch {}
+
 # ---- lockdown helpers ------------------------------------------------------
 function Set-TaskMgrDisabled([bool]$on) {
   try {
@@ -323,6 +351,71 @@ function Style-ThemeCombo($combo, $pal) {
   try {
     $combo.ArrowColor = $pal.Accent; $combo.ArrowBack = $pal.Box; $combo.BorderCol = $pal.Accent
     $combo.add_DrawItem($script:pn_comboDraw)
+  } catch {}
+}
+# generic owner-draw for NON-theme dropdowns (difficulty / questions): dark themed background +
+# accent text + an accent highlight on the focused row (no per-option gradient).
+$script:pn_plainComboDraw = {
+  param($s, $e)
+  if ($e.Index -lt 0) { try { $e.DrawBackground() } catch {}; return }
+  $txt = [string]$s.Items[$e.Index]; $r = $e.Bounds
+  try {
+    $sel = ((($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0) -and (($e.State -band [System.Windows.Forms.DrawItemState]::ComboBoxEdit) -eq 0))
+    $bg = if ($sel) { $script:pn_pal.Field } else { $script:pn_pal.Box }
+    $bb = New-Object System.Drawing.SolidBrush ($bg); $e.Graphics.FillRectangle($bb, $r); $bb.Dispose()
+    if ($sel) { $hp = New-Object System.Drawing.Pen ($script:pn_pal.Accent), 1; $e.Graphics.DrawRectangle($hp, $r.X, $r.Y, $r.Width-1, $r.Height-1); $hp.Dispose() }
+    $tb = New-Object System.Drawing.SolidBrush ($script:pn_pal.Accent); $e.Graphics.DrawString($txt, $s.Font, $tb, [single]($r.X + 6), [single]($r.Y + 3)); $tb.Dispose()
+  } catch {}
+}
+function Style-PlainCombo($combo, $pal) {
+  try { $combo.BackColor = $pal.Box; $combo.ForeColor = $pal.Accent } catch {}
+  try { $combo.ArrowColor = $pal.Accent; $combo.ArrowBack = $pal.Box; $combo.BorderCol = $pal.Accent; $combo.add_DrawItem($script:pn_plainComboDraw) } catch {}
+}
+# theme a checkbox so the white system box is gone and it stays visible on every theme:
+# flat box, accent border, accent tick, accent label. Transparent fill keeps the panel showing through.
+function Style-Check($cb, $pal, $textColor) {
+  try {
+    $cb.FlatStyle = 'Flat'
+    $cb.FlatAppearance.BorderColor = $pal.Accent
+    $cb.FlatAppearance.CheckedBackColor = [System.Drawing.Color]::FromArgb(60, $pal.Accent.R, $pal.Accent.G, $pal.Accent.B)
+    $cb.FlatAppearance.BorderSize = 1
+    $cb.BackColor = [System.Drawing.Color]::Transparent
+    if ($textColor) { $cb.ForeColor = $textColor } else { $cb.ForeColor = $pal.Accent }
+  } catch {}
+}
+# ---- custom themed scrollbar for the alarms list (v6.3) --------------------
+# pn_list scrolls manually (AutoScroll off, no white native bars). Rows are repositioned by a
+# pixel offset; a slim accent thumb on the right is drag/click/wheel-scrollable. Defensive: if
+# anything here throws at setup, the caller falls back to native AutoScroll so the list still works.
+function Reflow-List {
+  $off = [int]$script:pn_vOffset
+  foreach ($row in $script:pn_list.Controls) { try { $row.Top = ([int]$row.Tag) - $off } catch {} }
+}
+function Update-ListScroll {
+  try {
+    $vp = $script:pn_list.Height
+    $content = (@($script:pn_alarms).Count * 38) + 4
+    $script:pn_vMax = [int][math]::Max(0, $content - $vp)
+    if ($script:pn_vOffset -gt $script:pn_vMax) { $script:pn_vOffset = $script:pn_vMax }
+    if ($script:pn_vOffset -lt 0) { $script:pn_vOffset = 0 }
+    Reflow-List
+    if ($script:pn_sb) { $script:pn_sb.Visible = ($script:pn_vMax -gt 0); $script:pn_sb.Invalidate() }
+  } catch {}
+}
+function Scroll-List([int]$dy) {
+  $script:pn_vOffset = [int]($script:pn_vOffset + $dy)
+  if ($script:pn_vOffset -gt $script:pn_vMax) { $script:pn_vOffset = $script:pn_vMax }
+  if ($script:pn_vOffset -lt 0) { $script:pn_vOffset = 0 }
+  Reflow-List; if ($script:pn_sb) { $script:pn_sb.Invalidate() }
+}
+function ScrollTo-Y([int]$y) {
+  try {
+    $h = $script:pn_sb.ClientSize.Height; $vp = $script:pn_list.Height; $content = (@($script:pn_alarms).Count * 38) + 4
+    if ($content -le 0) { return }
+    $thumbH = [int][math]::Max(26, ($vp * $h) / $content)
+    $track = $h - $thumbH; if ($track -le 0) { return }
+    $frac = ($y - ($thumbH / 2)) / $track; if ($frac -lt 0) { $frac = 0.0 }; if ($frac -gt 1) { $frac = 1.0 }
+    $script:pn_vOffset = [int]($frac * $script:pn_vMax); Reflow-List; $script:pn_sb.Invalidate()
   } catch {}
 }
 function Get-AlarmSettings($id) {
@@ -853,25 +946,29 @@ function Panel-RenderRows {
   $green=$pal.Accent; $dim=$pal.Dim; $rowBg=$pal.Row
   $y = 4; $idx = 0; $count = @($script:pn_alarms).Count
   foreach ($al in $script:pn_alarms) {
-    $row = New-Object System.Windows.Forms.Panel; $row.Width=980; $row.Height=34; $row.Left=2; $row.Top=$y; $row.BackColor=$rowBg
+    # row positioned by scroll offset (v6.3 custom scroll); Tag holds the unscrolled top
+    $row = New-Object System.Windows.Forms.Panel; $row.Width=956; $row.Height=34; $row.Left=2; $row.Tag=$y; $row.Top=($y - [int]$script:pn_vOffset); $row.BackColor=$rowBg
+    # (wheel is handled globally by the WheelFilter when the cursor is over the list — no per-row handler needed)
     $cb = New-Object System.Windows.Forms.CheckBox; $cb.Checked=$al.Enabled; $cb.Left=8; $cb.Top=8; $cb.Width=18; $cb.Tag=$al.Id
     $cb.Add_CheckedChanged({ param($s,$e) $t = $script:pn_alarms | Where-Object { $_.Id -eq $s.Tag } | Select-Object -First 1; if ($t) { $t.Enabled = $s.Checked }; Panel-Persist; Panel-RefreshArmed; Panel-UpdateStatus })
+    Style-Check $cb $script:pn_pal
     $lt = New-Object System.Windows.Forms.Label; $lt.Text=$al.Time; $lt.Left=32; $lt.Top=8; $lt.Width=60; $lt.ForeColor=$green; $lt.Font=$script:pn_rowFonts.T
     $ll = New-Object System.Windows.Forms.Label; $ll.Text=$al.Label; $ll.Left=100; $ll.Top=9; $ll.Width=170; $ll.ForeColor=$dim; $ll.Font=$script:pn_rowFonts.N
     $when = if ($al.Rhythm) { 'daily (rhythm)' } elseif ($al.Date) { $w = Resolve-When $al.Time $al.Date $false; if ($w) { $al.Date } else { "$($al.Date) (past)" } } else { 'next' }
     $ld = New-Object System.Windows.Forms.Label; $ld.Text=$when; $ld.Left=276; $ld.Top=9; $ld.Width=140; $ld.ForeColor=[System.Drawing.Color]::FromArgb(110,200,150); $ld.Font=$script:pn_rowFonts.N
-    $ls = New-Object System.Windows.Forms.Label; $ls.Text=("{0} x{1} [{2}] ~{3}" -f $al.Diff,$al.NumQ,(Cats-Summary $al.Cats),$al.Theme); $ls.Left=420; $ls.Top=9; $ls.Width=286; $ls.ForeColor=[System.Drawing.Color]::FromArgb(90,180,130); $ls.Font=$script:pn_rowFonts.N
+    $ls = New-Object System.Windows.Forms.Label; $ls.Text=("{0} x{1} [{2}] ~{3}" -f $al.Diff,$al.NumQ,(Cats-Summary $al.Cats),$al.Theme); $ls.Left=420; $ls.Top=9; $ls.Width=250; $ls.ForeColor=[System.Drawing.Color]::FromArgb(90,180,130); $ls.Font=$script:pn_rowFonts.N
     # reorder buttons (v6): move this alarm up / down in the list. Top row's up + bottom row's down are disabled.
-    $up = New-Object System.Windows.Forms.Button; $up.Text=([string][char]0x25B2); $up.Left=712; $up.Top=4; $up.Width=30; $up.Height=26; $up.Tag=$al.Id; $up.FlatStyle='Flat'; $up.ForeColor=$green; $up.BackColor=[System.Drawing.Color]::FromArgb(0,33,15); $up.Font=$script:pn_rowFonts.B; $up.Enabled=($idx -gt 0)
+    $up = New-Object System.Windows.Forms.Button; $up.Text=([string][char]0x25B2); $up.Left=676; $up.Top=4; $up.Width=28; $up.Height=26; $up.Tag=$al.Id; $up.FlatStyle='Flat'; $up.ForeColor=$green; $up.BackColor=[System.Drawing.Color]::FromArgb(0,33,15); $up.Font=$script:pn_rowFonts.B; $up.Enabled=($idx -gt 0)
     $up.Add_Click({ param($s,$e) Panel-MoveAlarm $s.Tag -1 })
-    $dn = New-Object System.Windows.Forms.Button; $dn.Text=([string][char]0x25BC); $dn.Left=744; $dn.Top=4; $dn.Width=30; $dn.Height=26; $dn.Tag=$al.Id; $dn.FlatStyle='Flat'; $dn.ForeColor=$green; $dn.BackColor=[System.Drawing.Color]::FromArgb(0,33,15); $dn.Font=$script:pn_rowFonts.B; $dn.Enabled=($idx -lt ($count-1))
+    $dn = New-Object System.Windows.Forms.Button; $dn.Text=([string][char]0x25BC); $dn.Left=708; $dn.Top=4; $dn.Width=28; $dn.Height=26; $dn.Tag=$al.Id; $dn.FlatStyle='Flat'; $dn.ForeColor=$green; $dn.BackColor=[System.Drawing.Color]::FromArgb(0,33,15); $dn.Font=$script:pn_rowFonts.B; $dn.Enabled=($idx -lt ($count-1))
     $dn.Add_Click({ param($s,$e) Panel-MoveAlarm $s.Tag 1 })
-    $ed = New-Object System.Windows.Forms.Button; $ed.Text='EDIT'; $ed.Left=800; $ed.Top=4; $ed.Width=80; $ed.Height=26; $ed.Tag=$al.Id; $ed.FlatStyle='Flat'; $ed.ForeColor=$green; $ed.BackColor=[System.Drawing.Color]::FromArgb(0,33,15); $ed.Font=$script:pn_rowFonts.B
+    $ed = New-Object System.Windows.Forms.Button; $ed.Text='EDIT'; $ed.Left=766; $ed.Top=4; $ed.Width=74; $ed.Height=26; $ed.Tag=$al.Id; $ed.FlatStyle='Flat'; $ed.ForeColor=$green; $ed.BackColor=[System.Drawing.Color]::FromArgb(0,33,15); $ed.Font=$script:pn_rowFonts.B
     $ed.Add_Click({ param($s,$e) $a = $script:pn_alarms | Where-Object { $_.Id -eq $s.Tag } | Select-Object -First 1; if ($a) { Panel-LoadEditor $a } })
-    $del = New-Object System.Windows.Forms.Button; $del.Text='DELETE'; $del.Left=888; $del.Top=4; $del.Width=86; $del.Height=26; $del.Tag=$al.Id; $del.FlatStyle='Flat'; $del.ForeColor=[System.Drawing.Color]::FromArgb(255,90,90); $del.BackColor=[System.Drawing.Color]::FromArgb(30,0,0); $del.Font=$script:pn_rowFonts.B
+    $del = New-Object System.Windows.Forms.Button; $del.Text='DELETE'; $del.Left=846; $del.Top=4; $del.Width=82; $del.Height=26; $del.Tag=$al.Id; $del.FlatStyle='Flat'; $del.ForeColor=[System.Drawing.Color]::FromArgb(255,90,90); $del.BackColor=[System.Drawing.Color]::FromArgb(30,0,0); $del.Font=$script:pn_rowFonts.B
     $del.Add_Click({ param($s,$e) $script:pn_alarms = @($script:pn_alarms | Where-Object { $_.Id -ne $s.Tag }); if ($script:pn_editId -eq $s.Tag) { Panel-LoadEditor $null }; Panel-Persist; Panel-RenderRows; Panel-RefreshArmed; Panel-UpdateStatus; Panel-Log "deleted" })
     $row.Controls.AddRange(@($cb,$lt,$ll,$ld,$ls,$up,$dn,$ed,$del)); $script:pn_list.Controls.Add($row); $y += 38; $idx++
   }
+  Update-ListScroll
 }
 function Panel-LoadEditor($al) {
   if (-not $al) { $al = New-Alarm $script:cfg.defaults; $script:pn_editId = $null; $script:pn_saveBtn.Text = 'DEPLOY ALARM' }
@@ -1041,7 +1138,7 @@ function Show-PanelGui {
   $fL=New-Object System.Drawing.Font('Consolas',10); $fLb=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold)
 
   $script:pn_form = New-Object System.Windows.Forms.Form
-  $script:pn_form.Text = "OVERRIDE // CONTROL v6.2"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
+  $script:pn_form.Text = "OVERRIDE // CONTROL v6.3"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
   $script:pn_form.StartPosition = 'CenterScreen'; $script:pn_form.MinimumSize = New-Object System.Drawing.Size(1040,860)
   $script:pn_form.WindowState = 'Maximized'; $script:pn_form.BackColor = [System.Drawing.Color]::Black
   $ico = Join-Path $script:eng 'override.ico'; if (Test-Path $ico) { try { $script:pn_form.Icon = New-Object System.Drawing.Icon $ico } catch {} }
@@ -1066,7 +1163,7 @@ function Show-PanelGui {
   $script:pn_form.Controls.Add($script:pn_box); $script:pn_rain.Panel.SendToBack()
 
   $hdr = New-Object System.Windows.Forms.Label; $hdr.Text=("OVERRIDE // CONTROL   "+[char]0x03A9); $hdr.Left=18; $hdr.Top=12; $hdr.Width=680; $hdr.Height=42; $hdr.ForeColor=$script:pn_pal.Accent; $hdr.BackColor=[System.Drawing.Color]::Transparent; $hdr.Font=New-Object System.Drawing.Font('Consolas',24,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($hdr)
-  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v6.2"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
+  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v6.3"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
   # APP THEME — skins THIS control panel (separate from each alarm's own ALARM THEME). Live re-skin.
   $appLbl = New-Object System.Windows.Forms.Label; $appLbl.Text="APP THEME"; $appLbl.Left=600; $appLbl.Top=52; $appLbl.Width=120; $appLbl.Height=20; $appLbl.TextAlign='MiddleRight'; $appLbl.ForeColor=$script:pn_pal.Accent2; $appLbl.BackColor=[System.Drawing.Color]::Transparent; $appLbl.Font=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($appLbl)
   $script:pn_appTheme = New-ThemeCombo; $script:pn_appTheme.Left=728; $script:pn_appTheme.Top=49; $script:pn_appTheme.Width=130; $script:pn_appTheme.Items.AddRange(@('green','red','cyber','crt')); $script:pn_appTheme.Font=$fLb; Style-ThemeCombo $script:pn_appTheme $script:pn_pal
@@ -1082,7 +1179,7 @@ function Show-PanelGui {
   $script:pn_box.Controls.Add($script:pn_appTheme)
   $script:pn_armed = New-Object System.Windows.Forms.Label; $script:pn_armed.Left=842; $script:pn_armed.Top=22; $script:pn_armed.Width=148; $script:pn_armed.Height=26; $script:pn_armed.TextAlign='MiddleRight'; $script:pn_armed.BackColor=[System.Drawing.Color]::Transparent; $script:pn_armed.Font=New-Object System.Drawing.Font('Consolas',13,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($script:pn_armed)
   # AUTO-BURN toggle (top-right): delete expired one-time alarms 24h after they fire
-  $script:pn_eBurn = New-Object System.Windows.Forms.CheckBox; $script:pn_eBurn.Text="auto-burn old alarms (24h)"; $script:pn_eBurn.Left=556; $script:pn_eBurn.Top=24; $script:pn_eBurn.Width=280; $script:pn_eBurn.Height=22; $script:pn_eBurn.ForeColor=$script:pn_pal.Accent2; $script:pn_eBurn.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eBurn.Font=$fL; $script:pn_eBurn.Checked=$script:pn_autoBurn; $script:pn_box.Controls.Add($script:pn_eBurn)
+  $script:pn_eBurn = New-Object System.Windows.Forms.CheckBox; $script:pn_eBurn.Text="auto-burn old alarms (24h)"; $script:pn_eBurn.Left=556; $script:pn_eBurn.Top=24; $script:pn_eBurn.Width=280; $script:pn_eBurn.Height=22; $script:pn_eBurn.ForeColor=$script:pn_pal.Accent2; $script:pn_eBurn.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eBurn.Font=$fL; $script:pn_eBurn.Checked=$script:pn_autoBurn; $script:pn_box.Controls.Add($script:pn_eBurn); Style-Check $script:pn_eBurn $script:pn_pal $script:pn_pal.Accent2
   $script:pn_tip = New-Object System.Windows.Forms.ToolTip; $script:pn_tip.SetToolTip($script:pn_eBurn, "Auto-delete one-time (non-repeating) alarms 24h after their time has passed.`r`nDaily 'rhythm' alarms are NEVER burned.")
   $script:pn_eBurn.Add_CheckedChanged({
     $script:pn_autoBurn = [bool]$script:pn_eBurn.Checked
@@ -1095,7 +1192,39 @@ function Show-PanelGui {
   })
 
   $lh = New-Object System.Windows.Forms.Label; $lh.Text="ALARMS"; $lh.Left=20; $lh.Top=60; $lh.Width=200; $lh.ForeColor=$dim; $lh.BackColor=[System.Drawing.Color]::Transparent; $lh.Font=$fLb; $script:pn_box.Controls.Add($lh)
-  $script:pn_list = New-Object System.Windows.Forms.Panel; $script:pn_list.Left=12; $script:pn_list.Top=84; $script:pn_list.Width=976; $script:pn_list.Height=190; $script:pn_list.AutoScroll=$true; $script:pn_list.BackColor=[System.Drawing.Color]::FromArgb(0,8,3); $script:pn_box.Controls.Add($script:pn_list)
+  $script:pn_list = New-Object System.Windows.Forms.Panel; $script:pn_list.Left=12; $script:pn_list.Top=84; $script:pn_list.Width=976; $script:pn_list.Height=190; $script:pn_list.BackColor=$script:pn_pal.Box; $script:pn_box.Controls.Add($script:pn_list)
+  # ---- v6.3 custom themed scrollbar for the alarm list (replaces the white native bars) ----
+  $script:pn_vOffset = 0; $script:pn_vMax = 0; $script:pn_sbDrag = $false
+  $script:pn_wheel = { param($s,$e) Scroll-List ([int](-([math]::Sign($e.Delta)) * 38)) }
+  try { $script:pn_list.AutoScroll = $false } catch {}
+  # wheel-over-list via a message filter (panels don't get wheel without focus); falls back silently
+  try {
+    $script:pn_wf = New-Object WheelFilter
+    $script:pn_wf.Target = $script:pn_list
+    $script:pn_wf.OnWheel = [Action[int]]{ param($d) Scroll-List ([int](-([math]::Sign($d)) * 38)) }
+    [System.Windows.Forms.Application]::AddMessageFilter($script:pn_wf)
+  } catch { $script:pn_wf = $null }   # degraded: drag/click the thumb still scrolls (no wheel), list stays themed
+  $script:pn_sb = New-Object System.Windows.Forms.Panel; $script:pn_sb.Left=($script:pn_list.Left + 960); $script:pn_sb.Top=$script:pn_list.Top; $script:pn_sb.Width=12; $script:pn_sb.Height=$script:pn_list.Height; $script:pn_sb.BackColor=$script:pn_pal.Box; $script:pn_sb.Cursor=[System.Windows.Forms.Cursors]::Hand
+  $script:pn_sb.Add_Paint({ param($s,$e)
+    try {
+      $g=$e.Graphics; $g.SmoothingMode=[System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+      $w=$s.ClientSize.Width; $h=$s.ClientSize.Height; $a=$script:pn_pal.Accent
+      $trk=New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(34,$a.R,$a.G,$a.B)); $g.FillRectangle($trk,[int]($w/2-1),4,2,[int]($h-8)); $trk.Dispose()
+      if ($script:pn_vMax -gt 0) {
+        $content=(@($script:pn_alarms).Count*38)+4; if ($content -lt 1) { $content=1 }
+        $thumbH=[int][math]::Max(28, ($h*$h)/$content); if ($thumbH -gt $h) { $thumbH=$h }
+        $thumbY=[int](($script:pn_vOffset/[double]$script:pn_vMax)*($h-$thumbH))
+        $tw=6; $tx=[int]($w/2-$tw/2)
+        $glw=New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(55,$a.R,$a.G,$a.B)); $g.FillRectangle($glw,[int]($tx-2),$thumbY,[int]($tw+4),$thumbH); $glw.Dispose()
+        $br=New-Object System.Drawing.SolidBrush $a
+        $g.FillRectangle($br,$tx,[int]($thumbY+3),$tw,[int]($thumbH-6)); $g.FillEllipse($br,$tx,$thumbY,$tw,$tw); $g.FillEllipse($br,$tx,[int]($thumbY+$thumbH-$tw),$tw,$tw); $br.Dispose()
+      }
+    } catch {}
+  })
+  $script:pn_sb.Add_MouseDown({ param($s,$e) $script:pn_sbDrag=$true; ScrollTo-Y $e.Y })
+  $script:pn_sb.Add_MouseMove({ param($s,$e) if ($script:pn_sbDrag) { ScrollTo-Y $e.Y } })
+  $script:pn_sb.Add_MouseUp({ $script:pn_sbDrag=$false })
+  $script:pn_box.Controls.Add($script:pn_sb); $script:pn_sb.BringToFront()
 
   $eh = New-Object System.Windows.Forms.Label; $eh.Text="EDIT / ADD ALARM"; $eh.Left=20; $eh.Top=286; $eh.Width=300; $eh.ForeColor=$dim; $eh.BackColor=[System.Drawing.Color]::Transparent; $eh.Font=$fLb; $script:pn_box.Controls.Add($eh)
 
@@ -1106,19 +1235,19 @@ function Show-PanelGui {
   $script:pn_eTime = NewTb 24 $r1 80;   (NewLbl "HH:MM" 24 ($r1+26) 80 $true) | Out-Null
   $script:pn_eLabel = NewTb 120 $r1 240; (NewLbl "label" 120 ($r1+26) 100 $true) | Out-Null
   $script:pn_eDate = NewTb 372 $r1 140;  (NewLbl "YYYY-MM-DD (blank=next)" 372 ($r1+26) 220 $true) | Out-Null
-  $script:pn_eRhythm = New-Object System.Windows.Forms.CheckBox; $script:pn_eRhythm.Text="Rhythm (every day)"; $script:pn_eRhythm.Left=560; $script:pn_eRhythm.Top=($r1+2); $script:pn_eRhythm.Width=220; $script:pn_eRhythm.ForeColor=$green; $script:pn_eRhythm.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eRhythm.Font=$fL; $script:pn_box.Controls.Add($script:pn_eRhythm)
+  $script:pn_eRhythm = New-Object System.Windows.Forms.CheckBox; $script:pn_eRhythm.Text="Rhythm (every day)"; $script:pn_eRhythm.Left=560; $script:pn_eRhythm.Top=($r1+2); $script:pn_eRhythm.Width=220; $script:pn_eRhythm.ForeColor=$green; $script:pn_eRhythm.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eRhythm.Font=$fL; $script:pn_box.Controls.Add($script:pn_eRhythm); Style-Check $script:pn_eRhythm $script:pn_pal
   $script:pn_eRhythm.Add_CheckedChanged({ $script:pn_eDate.Enabled = -not $script:pn_eRhythm.Checked; if ($script:pn_eRhythm.Checked) { $script:pn_eDate.Text = '' } })
 
   $r2 = 372
   (NewLbl "difficulty" 24 ($r2+4) 76 $false) | Out-Null
-  $script:pn_eDiff = New-Object System.Windows.Forms.ComboBox; $script:pn_eDiff.Left=104; $script:pn_eDiff.Top=$r2; $script:pn_eDiff.Width=100; $script:pn_eDiff.DropDownStyle='DropDownList'; $script:pn_eDiff.Items.AddRange(@('easy','medium','hard')); $script:pn_box.Controls.Add($script:pn_eDiff)
+  $script:pn_eDiff = New-ThemeCombo; $script:pn_eDiff.Left=104; $script:pn_eDiff.Top=$r2; $script:pn_eDiff.Width=100; $script:pn_eDiff.Font=$fL; $script:pn_eDiff.Items.AddRange(@('easy','medium','hard')); Style-PlainCombo $script:pn_eDiff $script:pn_pal; $script:pn_box.Controls.Add($script:pn_eDiff)
   (NewLbl "questions" 220 ($r2+4) 80 $false) | Out-Null
-  $script:pn_eNumQ = New-Object System.Windows.Forms.ComboBox; $script:pn_eNumQ.Left=302; $script:pn_eNumQ.Top=$r2; $script:pn_eNumQ.Width=56; $script:pn_eNumQ.DropDownStyle='DropDownList'; $script:pn_eNumQ.Items.AddRange(@(1,2,3,4,5,6)); $script:pn_box.Controls.Add($script:pn_eNumQ)
+  $script:pn_eNumQ = New-ThemeCombo; $script:pn_eNumQ.Left=302; $script:pn_eNumQ.Top=$r2; $script:pn_eNumQ.Width=56; $script:pn_eNumQ.Font=$fL; $script:pn_eNumQ.Items.AddRange(@(1,2,3,4,5,6)); Style-PlainCombo $script:pn_eNumQ $script:pn_pal; $script:pn_box.Controls.Add($script:pn_eNumQ)
   (NewLbl "duration" 374 ($r2+4) 68 $false) | Out-Null
   $script:pn_eDur = NewTb 444 $r2 46; (NewLbl "min" 494 ($r2+4) 36 $false) | Out-Null
-  $script:pn_eLockVol = New-Object System.Windows.Forms.CheckBox; $script:pn_eLockVol.Text="lock volume"; $script:pn_eLockVol.Left=544; $script:pn_eLockVol.Top=($r2+2); $script:pn_eLockVol.Width=130; $script:pn_eLockVol.ForeColor=$dim; $script:pn_eLockVol.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eLockVol.Font=$fL; $script:pn_box.Controls.Add($script:pn_eLockVol)
-  $script:pn_eNarr = New-Object System.Windows.Forms.CheckBox; $script:pn_eNarr.Text="narrator"; $script:pn_eNarr.Left=680; $script:pn_eNarr.Top=($r2+2); $script:pn_eNarr.Width=104; $script:pn_eNarr.ForeColor=$dim; $script:pn_eNarr.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eNarr.Font=$fL; $script:pn_box.Controls.Add($script:pn_eNarr)
-  $script:pn_eRain = New-Object System.Windows.Forms.CheckBox; $script:pn_eRain.Text="matrix rain"; $script:pn_eRain.Left=790; $script:pn_eRain.Top=($r2+2); $script:pn_eRain.Width=130; $script:pn_eRain.ForeColor=$dim; $script:pn_eRain.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eRain.Font=$fL; $script:pn_box.Controls.Add($script:pn_eRain)
+  $script:pn_eLockVol = New-Object System.Windows.Forms.CheckBox; $script:pn_eLockVol.Text="lock volume"; $script:pn_eLockVol.Left=544; $script:pn_eLockVol.Top=($r2+2); $script:pn_eLockVol.Width=130; $script:pn_eLockVol.ForeColor=$dim; $script:pn_eLockVol.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eLockVol.Font=$fL; $script:pn_box.Controls.Add($script:pn_eLockVol); Style-Check $script:pn_eLockVol $script:pn_pal
+  $script:pn_eNarr = New-Object System.Windows.Forms.CheckBox; $script:pn_eNarr.Text="narrator"; $script:pn_eNarr.Left=680; $script:pn_eNarr.Top=($r2+2); $script:pn_eNarr.Width=104; $script:pn_eNarr.ForeColor=$dim; $script:pn_eNarr.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eNarr.Font=$fL; $script:pn_box.Controls.Add($script:pn_eNarr); Style-Check $script:pn_eNarr $script:pn_pal
+  $script:pn_eRain = New-Object System.Windows.Forms.CheckBox; $script:pn_eRain.Text="matrix rain"; $script:pn_eRain.Left=790; $script:pn_eRain.Top=($r2+2); $script:pn_eRain.Width=130; $script:pn_eRain.ForeColor=$dim; $script:pn_eRain.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eRain.Font=$fL; $script:pn_box.Controls.Add($script:pn_eRain); Style-Check $script:pn_eRain $script:pn_pal
 
   $r2b = 416
   (NewLbl "ALARM THEME" 24 ($r2b+4) 110 $false) | Out-Null
@@ -1132,6 +1261,7 @@ function Show-PanelGui {
   foreach ($c in $script:CATS) {
     $chk = New-Object System.Windows.Forms.CheckBox; $chk.Text=$c; $chk.Left=(104 + $col*$colW); $chk.Top=($r3 + $rowI*28); $chk.Width=200
     $chk.ForeColor=$green; $chk.BackColor=[System.Drawing.Color]::Transparent; $chk.Font=$fL
+    Style-Check $chk $script:pn_pal
     $script:pn_box.Controls.Add($chk); $script:pn_eCats[$c]=$chk
     $col++; if ($col -ge 4) { $col = 0; $rowI++ }
   }
@@ -1174,6 +1304,8 @@ function Show-PanelGui {
     # if a debounced arm was still pending when the window closed, flush it now (synchronously)
     try { if ($script:pn_armTimer -and $script:pn_armTimer.Enabled) { $script:pn_armTimer.Stop(); Register-Alarms } } catch {}
     try { if ($script:pn_armTimer) { $script:pn_armTimer.Dispose(); $script:pn_armTimer = $null } } catch {}
+    # remove the wheel message filter so it doesn't leak across panel restarts (app-theme change)
+    try { if ($script:pn_wf) { [System.Windows.Forms.Application]::RemoveMessageFilter($script:pn_wf); $script:pn_wf = $null } } catch {}
     try { $script:pn_rain.Timer.Stop(); $script:pn_rain.Timer.Dispose() } catch {}
     try { $script:pn_statusTimer.Stop(); $script:pn_statusTimer.Dispose() } catch {}
     try { if ($script:pn_auto) { $script:pn_auto.Dispose() } } catch {}

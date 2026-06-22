@@ -57,6 +57,20 @@ are disabled. Order is cosmetic (alarms fire by scheduled time) but persists to 
 + readable text, and its `WndProc` overpaints the white system arrow with a theme-coloured one
 (try/caught so a draw glitch can't crash the panel). `Style-ThemeCombo` skins it to the panel accent.
 
+**Themed controls + custom scrollbar (v6.3):** no more white native widgets.
+- Checkboxes: `Style-Check` sets `FlatStyle=Flat` + `FlatAppearance.BorderColor`/`CheckedBackColor`
+  + accent fore (transparent fill) so the box is themed + visible on every theme.
+- difficulty/questions combos: `New-ThemeCombo` + `Style-PlainCombo` ($script:pn_plainComboDraw =
+  generic dark bg + accent text, themed arrow; no per-theme gradient).
+- Custom alarm-list scrollbar: `pn_list.AutoScroll=$false`; rows are positioned by `$script:pn_vOffset`
+  (each row's `Tag` = unscrolled top; `Reflow-List` repositions; `Update-ListScroll` clamps + sizes
+  the thumb + shows/hides). The thumb (`pn_sb`, a child of pn_box so `pn_list.Controls.Clear()` can't
+  wipe it) is drawn in `Add_Paint` (slim accent bar, rounded ends, soft glow on a faint track) and is
+  drag/click-scrollable (`ScrollTo-Y`). Wheel-over-list works via a `WheelFilter` app message filter
+  (panels don't get wheel without focus) that's removed in the Show-PanelGui `finally` so it can't leak
+  across app-theme restarts. Rows narrowed to W=956 to leave the scrollbar gutter. Adversarial review
+  (15 agents) returned 0 confirmed issues.
+
 **Auto-burn (v5):** the panel deletes expired ONE-TIME alarms 24h after their time
 (`Test-AlarmStale`/`Burn-StaleAlarms`); rhythm/daily alarms are never touched. Runs on panel
 open + every ~60s while open; toggled by `defaults.autoBurn` (default true) via the top-right
