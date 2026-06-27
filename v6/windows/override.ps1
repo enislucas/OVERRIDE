@@ -6,7 +6,10 @@ param(
 # OVERRIDE v6 // WAKE PROTOCOL — Windows engine (THEMED edition, started as a frozen copy of v5)
 # v6 = alarm reordering (move up/down). v6.2 = themed dropdowns (per-option colours + themed
 # arrow via the ThemedCombo class). v6.3 = themed checkboxes + difficulty/questions dropdowns +
-# a custom futuristic scrollbar for the alarm list (no white native bars). v5 = frozen rollback (tag v5-stable).
+# a custom futuristic scrollbar for the alarm list (no white native bars). v6.4 = missed-alarm fix:
+# a ring deferred by the OS (laptop slept/off through the scheduled time) no longer fires hours late
+# (no -StartWhenAvailable + Get-RingLatenessMin skip-if->30min guard, bug museum #25).
+# v5 = frozen rollback (tag v5-stable).
 # Same architecture as v3 (scheduled tasks -> one ephemeral ring, 0 CPU between alarms),
 # plus:
 #  - PRIMARY renderer: Edge kiosk showing quiz/quiz.html (GPU-composited, modern CSS,
@@ -434,7 +437,10 @@ function Get-AlarmSettings($id) {
   $rend = [string](Get-Prop $a 'renderer'     (Get-Prop $d 'renderer' 'auto'))
   $emf  = [int]   (Get-Prop $a 'edgeMinFreeMB' (Get-Prop $d 'edgeMinFreeMB' 900))
   if ($dur -lt 1) { $dur = 1 }
-  return @{ Label=$lbl; Diff=$diff; NumQ=$nq; Cats=(Convert-Cats $catO); DurationSec=($dur*60); LockVol=$lv; Narrator=$nar; MatrixRain=$mr; Theme=$thm; Renderer=$rend; EdgeMinFreeMB=$emf; Lockdown=$true; Relaunch=$true; Quiet=$false }
+  $tm  = [string](Get-Prop $a 'time' '')
+  $dte = [string](Get-Prop $a 'date' '')
+  $rhy = ($null -ne $a) -and ($a.PSObject.Properties.Name -contains 'rhythm') -and [bool]$a.rhythm
+  return @{ Label=$lbl; Diff=$diff; NumQ=$nq; Cats=(Convert-Cats $catO); DurationSec=($dur*60); LockVol=$lv; Narrator=$nar; MatrixRain=$mr; Theme=$thm; Renderer=$rend; EdgeMinFreeMB=$emf; Lockdown=$true; Relaunch=$true; Quiet=$false; Time=$tm; Date=$dte; Rhythm=$rhy }
 }
 function Get-TestSettings {
   $p = Join-Path $script:root 'session.testcfg'
@@ -456,7 +462,37 @@ function Get-TestSettings {
     if ($t.PSObject.Properties.Name -contains 'edgeMinFreeMB'){ $emf=[int]$t.edgeMinFreeMB }
   } catch {} }
   if ($quiet) { $lv = $false; $nar = $false }
-  return @{ Label='TEST'; Diff=$diff; NumQ=$nq; Cats=$cats; DurationSec=$dur; LockVol=$lv; Narrator=$nar; MatrixRain=$mr; Theme=$thm; Renderer=$rend; EdgeMinFreeMB=$emf; Lockdown=$false; Relaunch=$rel; Quiet=$quiet }
+  return @{ Label='TEST'; Diff=$diff; NumQ=$nq; Cats=$cats; DurationSec=$dur; LockVol=$lv; Narrator=$nar; MatrixRain=$mr; Theme=$thm; Renderer=$rend; EdgeMinFreeMB=$emf; Lockdown=$false; Relaunch=$rel; Quiet=$quiet; Time=''; Date=''; Rhythm=$false }
+}
+
+# How many minutes late is THIS ring vs the alarm's intended fire time? (signed; >0 = late, <0 = early)
+# Skips "deferred" triggers: if the laptop slept/hibernated/was off through the scheduled time, Windows
+# can release the missed task hours later (StartWhenAvailable) and ambush the user with an alarm that no
+# longer wakes anyone. Returns $null when the time can't be determined -> caller never skips on $null.
+# (bug museum #25)
+function Get-RingLatenessMin($S) {
+  $tm = [string]$S.Time
+  if ($tm -notmatch '^\s*\d{1,2}:\d{2}\s*$') { return $null }
+  $p = $tm.Trim().Split(':'); $hh = [int]$p[0]; $mm = [int]$p[1]
+  if ($hh -gt 23 -or $mm -gt 59) { return $null }
+  $now = Get-Date
+  $dateStr = ([string]$S.Date).Trim()
+  if ($dateStr) {
+    $stamp = ("{0} {1:00}:{2:00}" -f $dateStr, $hh, $mm)
+    try { $intended = [datetime]::ParseExact($stamp, 'yyyy-MM-dd HH:mm', [System.Globalization.CultureInfo]::InvariantCulture) }
+    catch { return $null }
+    return ($now - $intended).TotalMinutes
+  }
+  # daily/rhythm (or no date): compare to the NEAREST HH:MM occurrence (yesterday/today/tomorrow) so a
+  # ring that fires a few seconds early (Windows can fire slightly before the boundary) reads as ~0, and
+  # an alarm deferred to later the same day reads as hours late.
+  $today = Get-Date -Hour $hh -Minute $mm -Second 0 -Millisecond 0
+  $nearest = $today; $best = [double]::MaxValue
+  foreach ($c in @($today.AddDays(-1), $today, $today.AddDays(1))) {
+    $d = [math]::Abs(($now - $c).TotalMinutes)
+    if ($d -lt $best) { $best = $d; $nearest = $c }
+  }
+  return ($now - $nearest).TotalMinutes
 }
 
 # ---- unlock/heartbeat listener (raw TCP: works without admin, unlike HttpListener) ----
@@ -786,12 +822,16 @@ function Register-Alarms {
     if ($durMin -lt 1) { $durMin = 1 }
     $arg = "-NoProfile -Sta -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$($script:eng)\override.ps1`" -Ring -AlarmId $($a.id)"
     $action = New-ScheduledTaskAction -Execute $pw -Argument $arg -WorkingDirectory $script:eng
-    $settings = New-ScheduledTaskSettingsSet -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes ($durMin + 4)) -MultipleInstances IgnoreNew
+    # NO -StartWhenAvailable (bug museum #25): a missed wake-up (laptop slept/hibernated/off through the
+    # scheduled time) must NOT be deferred and fired hours later when the PC next powers on -- that only
+    # ambushes, never wakes. WakeToRun still wakes the PC on time from real sleep (S3). The ring path also
+    # guards with Get-RingLatenessMin so even a stale trigger from an old/other-version task can't ambush.
+    $settings = New-ScheduledTaskSettingsSet -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes ($durMin + 4)) -MultipleInstances IgnoreNew
     $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
     Register-ScheduledTask -TaskName "OVERRIDE_V6_$($a.id)" -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
     $safeArg = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$($script:eng)\override.ps1`" -Unlock"
     $safeAction = New-ScheduledTaskAction -Execute $pw -Argument $safeArg -WorkingDirectory $script:eng
-    $safeSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew
+    $safeSettings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew
     Register-ScheduledTask -TaskName "OVERRIDE_V6_safe_$($a.id)" -Action $safeAction -Trigger $safeTrigger -Settings $safeSettings -Principal $principal -Force | Out-Null
     Write-Host "  armed  $($a.label)  $desc  [theme: $(Get-Prop $a 'theme' 'green')]" -ForegroundColor Green; $n++
   }
@@ -1138,7 +1178,7 @@ function Show-PanelGui {
   $fL=New-Object System.Drawing.Font('Consolas',10); $fLb=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold)
 
   $script:pn_form = New-Object System.Windows.Forms.Form
-  $script:pn_form.Text = "OVERRIDE // CONTROL v6.3"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
+  $script:pn_form.Text = "OVERRIDE // CONTROL v6.4"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
   $script:pn_form.StartPosition = 'CenterScreen'; $script:pn_form.MinimumSize = New-Object System.Drawing.Size(1040,860)
   $script:pn_form.WindowState = 'Maximized'; $script:pn_form.BackColor = [System.Drawing.Color]::Black
   $ico = Join-Path $script:eng 'override.ico'; if (Test-Path $ico) { try { $script:pn_form.Icon = New-Object System.Drawing.Icon $ico } catch {} }
@@ -1163,7 +1203,7 @@ function Show-PanelGui {
   $script:pn_form.Controls.Add($script:pn_box); $script:pn_rain.Panel.SendToBack()
 
   $hdr = New-Object System.Windows.Forms.Label; $hdr.Text=("OVERRIDE // CONTROL   "+[char]0x03A9); $hdr.Left=18; $hdr.Top=12; $hdr.Width=680; $hdr.Height=42; $hdr.ForeColor=$script:pn_pal.Accent; $hdr.BackColor=[System.Drawing.Color]::Transparent; $hdr.Font=New-Object System.Drawing.Font('Consolas',24,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($hdr)
-  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v6.3"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
+  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v6.4"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
   # APP THEME — skins THIS control panel (separate from each alarm's own ALARM THEME). Live re-skin.
   $appLbl = New-Object System.Windows.Forms.Label; $appLbl.Text="APP THEME"; $appLbl.Left=600; $appLbl.Top=52; $appLbl.Width=120; $appLbl.Height=20; $appLbl.TextAlign='MiddleRight'; $appLbl.ForeColor=$script:pn_pal.Accent2; $appLbl.BackColor=[System.Drawing.Color]::Transparent; $appLbl.Font=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($appLbl)
   $script:pn_appTheme = New-ThemeCombo; $script:pn_appTheme.Left=728; $script:pn_appTheme.Top=49; $script:pn_appTheme.Width=130; $script:pn_appTheme.Items.AddRange(@('green','red','cyber','crt')); $script:pn_appTheme.Font=$fLb; Style-ThemeCombo $script:pn_appTheme $script:pn_pal
@@ -1329,6 +1369,19 @@ if ($Ring) {
   if (-not $got) { return }
   try {
     if ($TestNow) { $S = Get-TestSettings } else { $S = Get-AlarmSettings $AlarmId }
+    # STALE / DEFERRED TRIGGER GUARD (bug museum #25): if the laptop slept or was off through the
+    # scheduled time, Windows can release the missed task hours later and fire an alarm that no longer
+    # wakes anyone -- it only ambushes. Skip any non-test ring that starts more than missedGraceMin
+    # (default 30) past its scheduled time. A real on-time wake is within seconds, so this never
+    # touches a legitimate alarm. TestNow rings are user-initiated and always allowed.
+    if ($S -and -not $TestNow) {
+      $graceMin = [int](Get-Prop $script:cfg.defaults 'missedGraceMin' 30); if ($graceMin -lt 1) { $graceMin = 30 }
+      $lateMin = Get-RingLatenessMin $S
+      if (($null -ne $lateMin) -and ($lateMin -gt $graceMin)) {
+        try { Set-Content -Path (Join-Path $script:root 'session.skipped') -Value (("{0}  {1}  skipped: {2:n0} min late (grace {3} min)" -f (Get-Date).ToString('o'), $AlarmId, $lateMin, $graceMin)) -Encoding ASCII } catch {}
+        $S = $null
+      }
+    }
     if ($S) { Run-Ring $S }
   } finally { Invoke-Unlock; try { $mtx.ReleaseMutex() } catch {} }
   return

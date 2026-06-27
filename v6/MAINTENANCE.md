@@ -1,19 +1,25 @@
-# OVERRIDE — maintainer's guide (living doc; current line: v5)
+# OVERRIDE — maintainer's guide (living doc; current line: v6.4)
 
 Written so any future maintainer (human or model) can work on this app **without any
 context beyond this file**. Read this before changing anything.
 
-> **Version map:** v2/v3/v4 are FROZEN archives (rollback points — never edit them; v4 is
-> tagged `v4-stable`). All work happens in the newest line (currently **v5/**). Paths in the
-> examples below say `v3\` for historical reasons — use the current version's folder. The
-> bug museum is cumulative across all versions; #17-19 were found/fixed in v4 and carried here.
+> **Version map:** v2/v3/v4/v5 are FROZEN archives (rollback points — never edit them; v4 is
+> tagged `v4-stable`, v5 `v5-stable`). All work happens in the newest line (currently **v6/**,
+> label v6.4). Paths in the examples below say `v3\` for historical reasons — use the current
+> version's folder. The bug museum is cumulative across all versions; #17-19 were found/fixed
+> in v4 and carried here, #20-24 in the v5 audit, #25 in v6.4.
 
 ## The four invariants (break these and the app has failed its one job)
 
-1. **The alarm must fire.** Nothing in the config, filesystem, or quiz may be able to
-   prevent the ring. That is why `Load-Config` falls back to defaults + `.bak`, why a
-   missing quiz file still leaves the sound ringing, and why a missing `sounds/` dir
-   synthesizes a fallback wav. Never add a hard dependency to the ring path.
+1. **The alarm must fire — *on time*.** Nothing in the config, filesystem, or quiz may be
+   able to prevent a legitimate, on-time ring. That is why `Load-Config` falls back to
+   defaults + `.bak`, why a missing quiz file still leaves the sound ringing, and why a
+   missing `sounds/` dir synthesizes a fallback wav. Never add a hard dependency to the ring
+   path. The ONE intentional non-fire is a **stale/deferred trigger** (a ring starting
+   >`missedGraceMin` after its scheduled time — the laptop slept/was off through the alarm
+   and the OS released it late): it is skipped, because an alarm hours late doesn't wake
+   anyone, it only ambushes (bug museum #25). That is *upholding* this invariant — fire at
+   the right time — not breaking it.
 2. **0 CPU between alarms.** No daemons, no watchdogs, no polling processes. Alarms are
    OS scheduler entries; the ring is ephemeral. (v1 died because a watchdog/respawn
    cascade ate the machine — see bug museum #1.)
@@ -119,6 +125,7 @@ v2 and v3 tasks exist for one night, only one ring can ever run.
 | **22** | **(v5 audit, MED hang→lockout) untimed `Get-CimInstance` on the ring's pump thread** | a sick/overloaded WMI service can make `Get-CimInstance` hang for many seconds; on the ring's timer/pump thread that freezes the deadline/UNLOCK/PANIC checks and the keyboard hook's liveness. | every `Get-CimInstance` in the ring path now has `-OperationTimeoutSec 4` (Test-QuizPresent, Stop-QuizProcs, Invoke-Unlock reaper, free-RAM probe). |
 | **23** | **(v5 audit, LOW) browser heartbeat churned ~1,800 `Image` objects on a 60-min ring** | `quiz.html` allocated `new Image()` every 2s and never stopped after solve. | reuse ONE `beatImg`; `clearInterval` once `DONE` (set on unlock/closeWin). |
 | **24** | **(v5 audit, MED setup) `install.ps1` / `make_sounds.ps1` aborted on locked-down machines** | uncaught `New-Object -ComObject WScript.Shell` (shortcut) and `Add-Type` (sound synth) throw where policy disables WSH / the C# compiler. | both wrapped in try/catch with a console fallback message; the ring still synthesizes a fallback tone at alarm time, so setup failing here is recoverable. |
+| **25** | **(SEVERE, real-world, v6.4) an alarm the user "never set" rang at 15:44 — 1 arithmetic question** | it was the real **04:05** daily alarm. The laptop was awake at 03:55 (that alarm fired on time) but was hibernated/off by 04:05, so `WakeToRun` couldn't wake it (`powercfg /lastwake` = count 0) and 04:05 was *missed*. Every task was armed with **`-StartWhenAvailable`** ("run a missed task as soon as the PC is available"), so the moment the lid opened at 15:44 the OS released the backlog — the ring + BOTH `safe_*` unlock tasks all show `LastRun = 15:44:44`. An alarm 11h late doesn't wake you, it ambushes you. | **(a)** dropped `-StartWhenAvailable` from the ring AND `safe_*` task settings, so a missed alarm is never deferred. **(b)** ring-path guard `Get-RingLatenessMin` ($S now carries `Time/Date/Rhythm`): a non-`TestNow` ring that starts >`defaults.missedGraceMin` (default 30) past its scheduled time writes `session.skipped` and returns WITHOUT ringing — this loads from disk every fire, so it also neutralizes a stale trigger left by an old/other-version task or a panel still running pre-fix code. Lateness = now − nearest HH:MM occurrence (handles the midnight wrap + few-seconds-early fires; a real on-time wake reads ~0). `-WakeToRun` is kept (wakes the PC on time from real *sleep* S3); wake-timers already enabled (AC+DC). **Honest limit:** from *hibernate/shutdown* no scheduled task can wake the PC — keep the laptop on **sleep** (not hibernate) for the alarm to wake it; otherwise it correctly skips rather than ambushing. |
 
 **Windows honest limit:** `Ctrl+Alt+Del → Task Manager` cannot be blocked by a non-admin
 process, and on this (managed) machine the `DisableTaskMgr` policy key is ACL-locked.
