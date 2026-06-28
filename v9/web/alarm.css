@@ -1,0 +1,91 @@
+/* OVERRIDE v7 // setup + armed screens (the quiz screens are styled by style.css).
+   Scoped under #ovr so nothing here leaks into the reused quiz DOM. */
+
+html, body {
+  height: 100%; margin: 0; background: #070002;
+  /* kill the iOS escape hatches we can kill: rubber-band scroll, long-press menu, double-tap zoom */
+  overscroll-behavior: none; -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none; touch-action: manipulation;
+  font-family: "Cascadia Mono", Consolas, Menlo, monospace;
+}
+
+#ovr {
+  position: fixed; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-start;
+  padding: calc(env(safe-area-inset-top, 0px) + 26px) 20px 40px;
+  box-sizing: border-box; overflow-y: auto; color: #ff8d94;
+  background:
+    radial-gradient(ellipse at 50% 18%, rgba(255,34,51,0.10), rgba(0,0,0,0) 60%),
+    #070002;
+}
+
+#ovr .brandrow { text-align: center; margin-bottom: 6px; }
+#ovr .logo { font-size: 30px; letter-spacing: 6px; color: #ff2233; font-weight: bold;
+  text-shadow: 0 0 18px rgba(255,34,51,0.6); }
+#ovr .tag { font-size: 12px; letter-spacing: 4px; color: #b04a52; margin-top: 4px; }
+
+#ovr .card {
+  width: 100%; max-width: 520px; margin: 16px 0; padding: 18px 20px;
+  background: rgba(20,0,2,0.72); border: 1px solid rgba(255,34,51,0.45);
+  border-radius: 12px; box-shadow: 0 0 40px rgba(255,34,51,0.14), inset 0 0 40px rgba(255,34,51,0.04);
+  box-sizing: border-box;
+}
+#ovr .card h2 { margin: 0 0 12px; font-size: 13px; letter-spacing: 3px; color: #ff6b75; font-weight: normal; }
+
+/* time */
+#ovr .timewrap { text-align: center; margin: 4px 0 8px; }
+#ovr input[type=time] {
+  font-family: inherit; font-size: 56px; letter-spacing: 2px; text-align: center;
+  background: #170003; color: #ffd6d9; border: 2px solid #7a1018; border-radius: 10px;
+  padding: 8px 14px; width: 100%; max-width: 320px; box-sizing: border-box;
+  -webkit-appearance: none; appearance: none;
+}
+#ovr input[type=time]:focus { outline: none; border-color: #ff2233; box-shadow: 0 0 16px rgba(255,34,51,0.6); }
+
+/* generic rows */
+#ovr .row { display: flex; align-items: center; justify-content: space-between; margin: 12px 0; gap: 10px; }
+#ovr .row label { font-size: 14px; color: #ff8d94; }
+#ovr select, #ovr .seg {
+  font-family: inherit; font-size: 16px; background: #170003; color: #ffd6d9;
+  border: 1px solid #7a1018; border-radius: 8px; padding: 8px 10px;
+}
+#ovr select:focus { outline: none; border-color: #ff2233; }
+
+/* segmented toggles (difficulty, count, theme, subjects) */
+#ovr .seg { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; border: none; background: none; }
+#ovr .chip {
+  font-size: 14px; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+  background: #170003; color: #b07; border: 1px solid #7a1018; color: #ff8d94;
+}
+#ovr .chip.on { background: #ff2233; color: #140002; border-color: #ff2233; font-weight: bold;
+  box-shadow: 0 0 12px rgba(255,34,51,0.6); }
+
+/* buttons */
+#ovr .btn {
+  font-family: inherit; font-size: 20px; letter-spacing: 3px; width: 100%;
+  padding: 16px; margin-top: 6px; border-radius: 10px; cursor: pointer;
+  background: #240007; color: #ff2233; border: 2px solid #ff2233;
+  text-shadow: 0 0 8px rgba(255,0,0,0.5);
+}
+#ovr .btn:active { background: #ff2233; color: #140002; }
+#ovr .btn.arm { font-size: 24px; padding: 20px; }
+#ovr .btn.ghost { font-size: 15px; letter-spacing: 2px; padding: 12px; color: #ff8d94; border-color: #7a1018; }
+
+/* checklist */
+#ovr .check { list-style: none; padding: 0; margin: 6px 0 0; }
+#ovr .check li { font-size: 13px; line-height: 1.7; color: #ff8d94; }
+#ovr .check li b { color: #ffd6d9; }
+#ovr .check .k { color: #ff2233; }
+
+/* armed / countdown screen */
+#ovr.armed { justify-content: center; }
+#ovr .cd { text-align: center; }
+#ovr .cd .lbl { font-size: 13px; letter-spacing: 4px; color: #ff6b75; }
+#ovr .cd .time { font-size: 30px; color: #ffd6d9; margin: 6px 0 2px; letter-spacing: 2px; }
+#ovr .cd .num { font-size: 84px; font-weight: bold; color: #ff2233; letter-spacing: 2px; margin: 10px 0;
+  text-shadow: 0 0 30px rgba(255,34,51,0.6); font-variant-numeric: tabular-nums; }
+#ovr .cd .sub { font-size: 13px; color: #b04a52; line-height: 1.8; max-width: 420px; margin: 8px auto 22px; }
+#ovr .cd .warn { color: #ffd6d9; }
+
+#ovr .note { font-size: 12px; color: #8a3a40; text-align: center; margin-top: 14px; line-height: 1.6; }
+#ovr a { color: #ff6b75; }
