@@ -1,7 +1,7 @@
 /* OVERRIDE v7 // service worker — offline cache so the alarm has NO 4am network
    dependency. The alarm itself runs in the foreground page (a SW cannot run a
    background alarm on iOS); this only caches the assets for Add-to-Home-Screen. */
-var CACHE = 'override-v9-1';
+var CACHE = 'override-v9-2';
 var ASSETS = [
   './index.html', './app.js', './core.js', './style.css', './alarm.css', './phone.css',
   './silence.wav', './alarm.wav', './manifest.webmanifest', './apple-touch-icon.png',

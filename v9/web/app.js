@@ -46,6 +46,53 @@
   function saveCfg() { try { localStorage.setItem(LS, JSON.stringify(cfg)); } catch (e) {} }
   var cfg = loadCfg();
 
+  /* --------------------------- diagnostics ---------------------------- */
+  // A persistent ring-buffer log in localStorage so we can SEE what happened overnight
+  // (iOS freezes a backgrounded/locked page's JS; this captures freezes, visibility
+  // changes, wake-lock state and fire/solve so a morning screenshot tells the whole story).
+  var DLOG = 'override_v7_diag';
+  function dlog(m) {
+    try {
+      var a = JSON.parse(localStorage.getItem(DLOG) || '[]');
+      a.push({ t: Date.now(), m: m });
+      if (a.length > 300) a = a.slice(a.length - 300);
+      localStorage.setItem(DLOG, JSON.stringify(a));
+    } catch (e) {}
+  }
+  function dlogText() {
+    try {
+      var a = JSON.parse(localStorage.getItem(DLOG) || '[]');
+      if (!a.length) return '(empty - arm the alarm or run a test, then check back)';
+      return a.map(function (x) {
+        var d = new Date(x.t); function p(n) { return (n < 10 ? '0' : '') + n; }
+        return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + '  ' + x.m;
+      }).join('\n');
+    } catch (e) { return '(log unreadable)'; }
+  }
+  function showDiag() {
+    var ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.94);padding:14px;box-sizing:border-box;display:flex;flex-direction:column';
+    var h = document.createElement('div'); h.textContent = 'OVERRIDE diagnostics - screenshot this & send it';
+    h.style.cssText = 'color:#ff8d94;font:13px Consolas,monospace;margin-bottom:8px';
+    var ta = document.createElement('textarea'); ta.readOnly = true; ta.value = dlogText();
+    ta.style.cssText = 'flex:1;width:100%;box-sizing:border-box;background:#140002;color:#9fe9c0;border:1px solid #7a1018;font:12px Consolas,monospace;white-space:pre;overflow:auto;padding:8px';
+    var row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;margin-top:8px';
+    var cl = document.createElement('button'); cl.textContent = 'CLOSE'; cl.className = 'btn ghost'; cl.style.flex = '1';
+    cl.addEventListener('click', function () { if (ov.parentNode) ov.parentNode.removeChild(ov); });
+    var clr = document.createElement('button'); clr.textContent = 'CLEAR'; clr.className = 'btn ghost'; clr.style.flex = '1';
+    clr.addEventListener('click', function () { try { localStorage.removeItem(DLOG); } catch (e) {} ta.value = dlogText(); });
+    row.appendChild(cl); row.appendChild(clr);
+    ov.appendChild(h); ov.appendChild(ta); ov.appendChild(row);
+    document.body.appendChild(ov);
+  }
+  function beat() { return (Math.floor(Date.now() / 1000) % 2) ? '●' : '○'; }
+  function wakeStatusText() {
+    if (wakeState === 'on') return 'HELD';
+    if (wakeState === 'unsupported') return 'n/a - use Auto-Lock=Never';
+    if (wakeState === 'failed') return 'FAILED - use Auto-Lock=Never';
+    return '...';
+  }
+
   /* ------------------------------ state ------------------------------- */
   var state = 'setup';        // setup | armed | ringing | solved
   var targetMs = 0, pollTimer = null, nagTimer = null, lastSpoke = 0;
@@ -194,18 +241,25 @@
   function stopNag() { if (nagTimer) { clearInterval(nagTimer); nagTimer = null; } }
 
   /* ---------------------------- wake lock ----------------------------- */
-  var wakeLock = null;
+  // Keeping the screen ON is THE thing that stops iOS suspending our JS. Re-acquire
+  // aggressively (iOS drops the lock on every hide) and record state so the armed
+  // screen + diagnostics show whether it's actually holding.
+  var wakeLock = null, wakeWanted = false, wakeState = 'off';   // off | on | unsupported | failed
   function acquireWake() {
+    wakeWanted = true;
     try {
-      if ('wakeLock' in navigator && navigator.wakeLock.request) {
-        navigator.wakeLock.request('screen').then(function (wl) {
-          wakeLock = wl;
-          wakeLock.addEventListener('release', function () { wakeLock = null; });
-        }).catch(function () {});
+      if (!('wakeLock' in navigator) || !navigator.wakeLock || !navigator.wakeLock.request) {
+        if (wakeState !== 'unsupported') { wakeState = 'unsupported'; dlog('wakeLock UNSUPPORTED - rely on Auto-Lock=Never'); }
+        return;
       }
-    } catch (e) {}
+      if (wakeLock) return;
+      navigator.wakeLock.request('screen').then(function (wl) {
+        wakeLock = wl; wakeState = 'on'; dlog('wakeLock acquired');
+        wakeLock.addEventListener('release', function () { wakeLock = null; if (wakeState === 'on') wakeState = 'off'; dlog('wakeLock released by OS'); });
+      }).catch(function (err) { wakeState = 'failed'; dlog('wakeLock FAILED: ' + (err && err.name ? err.name : 'error')); });
+    } catch (e) { wakeState = 'failed'; dlog('wakeLock threw'); }
   }
-  function releaseWake() { try { if (wakeLock) { wakeLock.release(); wakeLock = null; } } catch (e) {} }
+  function releaseWake() { wakeWanted = false; wakeState = 'off'; try { if (wakeLock) { wakeLock.release(); wakeLock = null; } } catch (e) {} }
 
   /* ---------------------------- scheduler ----------------------------- */
   function nextOccurrence(hhmm) {
@@ -231,7 +285,8 @@
     primeAudio();              // gesture-bound: unlock audio NOW
     acquireWake();
     targetMs = nextOccurrence(cfg.time);
-    state = 'armed';
+    state = 'armed'; lastTickT = 0;
+    dlog('ARM ' + cfg.time + ' -> fires in ' + Math.round((targetMs - Date.now()) / 1000) + 's; wakeLock support=' + ('wakeLock' in navigator));
     renderArmed();
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(tick, 250);
@@ -242,11 +297,21 @@
     stopAlarm(); stopNag(); releaseWake();
     renderSetup();
   }
+  var lastTickT = 0;
   function tick() {
+    var now = Date.now();
+    // suspension detector: ticks are 250ms apart; a big gap means iOS froze the page
+    if (lastTickT && (now - lastTickT) > 1500 && state === 'armed') {
+      dlog('TIMER FROZE ~' + Math.round((now - lastTickT) / 1000) + 's (screen slept or app backgrounded)');
+    }
+    lastTickT = now;
+    // re-grab the screen lock if we lost it and we're visible (cheap, idempotent)
+    if (wakeWanted && !wakeLock && document.visibilityState === 'visible') acquireWake();
     if (state !== 'armed') return;
-    var left = targetMs - Date.now();
-    if (left <= 0) { fire(); return; }
+    var left = targetMs - now;
+    if (left <= 0) { dlog('FIRE' + (left < -2000 ? ' LATE by ' + Math.round(-left / 1000) + 's (page had been asleep)' : '')); fire(); return; }
     var n = document.getElementById('cdNum'); if (n) n.textContent = fmtLeft(left);
+    var hb = document.getElementById('cdHb'); if (hb) hb.innerHTML = beat() + ' live &nbsp;·&nbsp; screen-lock: ' + wakeStatusText();
   }
 
   /* ------------------------------- fire ------------------------------- */
@@ -280,6 +345,7 @@
 
   function onSolved() {
     if (state === 'solved') return;
+    dlog('SOLVED -> alarm silenced');
     state = 'solved';
     stopAlarm(); stopNag();
     if (cfg.repeat) {
@@ -310,6 +376,7 @@
     } catch (e) {}
   }
   document.addEventListener('visibilitychange', function () {
+    dlog('visibility ' + document.visibilityState + (state !== 'setup' ? ' [' + state + ']' : ''));
     if (document.visibilityState !== 'visible') return;
     if (state === 'armed' || state === 'ringing') acquireWake();   // iOS released it on hide
     if (state === 'armed') tick();                                  // catch up immediately if we slept past target
@@ -342,7 +409,7 @@
   function renderSetup() {
     var r = root(); r.innerHTML = '';
     var brand = document.createElement('div'); brand.className = 'brandrow';
-    brand.innerHTML = '<div class="logo">OVERRIDE</div><div class="tag">WAKE PROTOCOL // v9 - iPhone</div>';
+    brand.innerHTML = '<div class="logo">OVERRIDE</div><div class="tag">WAKE PROTOCOL // v9.1 - iPhone</div>';
     r.appendChild(brand);
 
     var c1 = document.createElement('div'); c1.className = 'card';
@@ -375,20 +442,22 @@
     t1.addEventListener('click', function () { testSound(5); }); c3.appendChild(t1);
     var t2 = document.createElement('button'); t2.className = 'btn ghost'; t2.textContent = 'TEST FULL ALARM (rings in ~1s)';
     t2.addEventListener('click', testRing); c3.appendChild(t2);
+    var t3 = document.createElement('button'); t3.className = 'btn ghost'; t3.textContent = 'DIAGNOSTICS LOG';
+    t3.addEventListener('click', showDiag); c3.appendChild(t3);
     r.appendChild(c3);
 
     var c4 = document.createElement('div'); c4.className = 'card';
     c4.innerHTML = '<h2>BEFORE YOU SLEEP - do these once (iPhone)</h2><ul class="check">' +
       '<li><span class="k">1.</span> <b>Add to Home Screen</b> (Share &gt; Add to Home Screen), then open it from the icon.</li>' +
       '<li><span class="k">2.</span> Flip the <b>side switch to RING</b> (no orange), and turn <b>Volume UP</b>.</li>' +
-      '<li><span class="k">3.</span> Settings &gt; Display &amp; Brightness &gt; <b>Auto-Lock = Never</b>.</li>' +
+      '<li><span class="k">3.</span> Settings &gt; Display &amp; Brightness &gt; <b>Auto-Lock = Never</b> (critical - if the screen locks, iOS freezes the alarm).</li>' +
       '<li><span class="k">4.</span> <b>Plug it in</b>, and turn <b>Low Power Mode OFF</b>.</li>' +
       '<li><span class="k">5.</span> Tap <b>ARM</b>, leave this open. Don&#39;t switch apps or lock the screen.</li>' +
       '<li><span class="k">6.</span> <b>Failsafe:</b> set a normal <b>Clock app alarm</b> at the same time too.</li></ul>';
     r.appendChild(c4);
 
     var note = document.createElement('div'); note.className = 'note';
-    note.innerHTML = 'honest limit: a website can&#39;t lock iPhone like a real app - it stays loud &amp; quiz-gated, but keep it open &amp; foreground (don&#39;t lock the screen).';
+    note.innerHTML = 'honest limit: a website can&#39;t lock iPhone like a real app - it stays loud &amp; quiz-gated, but keep it open &amp; foreground (do not lock the screen).';
     r.appendChild(note);
   }
 
@@ -399,7 +468,9 @@
       '<div class="lbl">ALARM ARMED</div>' +
       '<div class="time">wake at ' + cfg.time + (cfg.repeat ? ' - daily' : '') + '</div>' +
       '<div class="num" id="cdNum">--</div>' +
-      '<div class="sub"><span class="warn">Keep this screen open &amp; the iPhone plugged in.</span><br>' +
+      '<div class="sub" id="cdHb" style="margin-bottom:8px">...</div>' +
+      '<div class="sub"><span class="warn">Screen must stay ON (do not let it lock) &amp; the iPhone plugged in.</span><br>' +
+      'If the ● above stops blinking, iOS froze the page - tap the screen to wake it.<br>' +
       'When it fires you must solve ' + cfg.numQuestions + ' question' + (cfg.numQuestions === 1 ? '' : 's') + ' to silence it.</div>';
     r.appendChild(cd);
     var dis = document.createElement('button'); dis.className = 'btn ghost'; dis.style.maxWidth = '320px';
@@ -413,5 +484,6 @@
   }
 
   /* ------------------------------- boot ------------------------------- */
+  dlog('app loaded (' + (window.navigator.standalone ? 'home-screen PWA' : 'browser tab') + ')');
   renderSetup();
 })();
