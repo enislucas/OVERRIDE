@@ -9,6 +9,8 @@ param(
 # a custom futuristic scrollbar for the alarm list (no white native bars). v6.4 = missed-alarm fix:
 # a ring deferred by the OS (laptop slept/off through the scheduled time) no longer fires hours late
 # (no -StartWhenAvailable + Get-RingLatenessMin skip-if->30min guard, bug museum #25).
+# v6.5 = checkbox visibility: owner-drawn high-contrast check (bright accent box + dark tick) on
+# every theme -- the old accent-check-on-accent-fill was red-on-red, invisible.
 # v5 = frozen rollback (tag v5-stable).
 # Same architecture as v3 (scheduled tasks -> one ephemeral ring, 0 CPU between alarms),
 # plus:
@@ -377,13 +379,42 @@ function Style-PlainCombo($combo, $pal) {
 # theme a checkbox so the white system box is gone and it stays visible on every theme:
 # flat box, accent border, accent tick, accent label. Transparent fill keeps the panel showing through.
 function Style-Check($cb, $pal, $textColor) {
+  # v6.5: the old style drew an accent-coloured check on a 60-alpha accent fill -> on the red
+  # theme that was a red check on dark-red = invisible. Now we OWNER-DRAW the box on top of the
+  # default flat glyph: CHECKED = solid bright accent fill + a dark check ink; UNCHECKED = dark
+  # field fill + accent border. High contrast on green/red/cyber/crt alike.
   try {
+    $boxCol = if ($textColor) { $textColor } else { $pal.Accent }
+    $ink    = $pal.Box                       # near-black per theme -> dark check on bright box
+    $field  = $pal.Field
     $cb.FlatStyle = 'Flat'
-    $cb.FlatAppearance.BorderColor = $pal.Accent
-    $cb.FlatAppearance.CheckedBackColor = [System.Drawing.Color]::FromArgb(60, $pal.Accent.R, $pal.Accent.G, $pal.Accent.B)
-    $cb.FlatAppearance.BorderSize = 1
+    $cb.FlatAppearance.BorderSize = 0
+    $cb.FlatAppearance.CheckedBackColor = [System.Drawing.Color]::Transparent
     $cb.BackColor = [System.Drawing.Color]::Transparent
-    if ($textColor) { $cb.ForeColor = $textColor } else { $cb.ForeColor = $pal.Accent }
+    $cb.ForeColor = $boxCol                   # label text colour
+    $painter = {
+      param($s, $e)
+      try {
+        $g = $e.Graphics; $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $sz = 15; $top = [int](($s.Height - $sz) / 2); if ($top -lt 0) { $top = 0 }
+        $rect = New-Object System.Drawing.Rectangle 0, $top, $sz, $sz
+        if ($s.Checked) {
+          $fb = New-Object System.Drawing.SolidBrush $boxCol; $g.FillRectangle($fb, $rect); $fb.Dispose()
+          $pen = New-Object System.Drawing.Pen $ink, ([single]2.4)
+          $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round; $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+          $pts = [System.Drawing.Point[]]@(
+            (New-Object System.Drawing.Point ([int]($rect.X + 3)), ([int]($rect.Y + 8))),
+            (New-Object System.Drawing.Point ([int]($rect.X + 6)), ([int]($rect.Y + 11))),
+            (New-Object System.Drawing.Point ([int]($rect.X + 12)), ([int]($rect.Y + 4)))
+          )
+          $g.DrawLines($pen, $pts); $pen.Dispose()
+        } else {
+          $bgb = New-Object System.Drawing.SolidBrush $field; $g.FillRectangle($bgb, $rect); $bgb.Dispose()
+          $pen = New-Object System.Drawing.Pen $boxCol, ([single]1.5); $g.DrawRectangle($pen, $rect); $pen.Dispose()
+        }
+      } catch {}
+    }.GetNewClosure()
+    $cb.Add_Paint($painter)
   } catch {}
 }
 # ---- custom themed scrollbar for the alarms list (v6.3) --------------------
@@ -1178,7 +1209,7 @@ function Show-PanelGui {
   $fL=New-Object System.Drawing.Font('Consolas',10); $fLb=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold)
 
   $script:pn_form = New-Object System.Windows.Forms.Form
-  $script:pn_form.Text = "OVERRIDE // CONTROL v6.4"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
+  $script:pn_form.Text = "OVERRIDE // CONTROL v6.5"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
   $script:pn_form.StartPosition = 'CenterScreen'; $script:pn_form.MinimumSize = New-Object System.Drawing.Size(1040,860)
   $script:pn_form.WindowState = 'Maximized'; $script:pn_form.BackColor = [System.Drawing.Color]::Black
   $ico = Join-Path $script:eng 'override.ico'; if (Test-Path $ico) { try { $script:pn_form.Icon = New-Object System.Drawing.Icon $ico } catch {} }
@@ -1203,7 +1234,7 @@ function Show-PanelGui {
   $script:pn_form.Controls.Add($script:pn_box); $script:pn_rain.Panel.SendToBack()
 
   $hdr = New-Object System.Windows.Forms.Label; $hdr.Text=("OVERRIDE // CONTROL   "+[char]0x03A9); $hdr.Left=18; $hdr.Top=12; $hdr.Width=680; $hdr.Height=42; $hdr.ForeColor=$script:pn_pal.Accent; $hdr.BackColor=[System.Drawing.Color]::Transparent; $hdr.Font=New-Object System.Drawing.Font('Consolas',24,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($hdr)
-  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v6.4"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
+  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v6.5"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
   # APP THEME — skins THIS control panel (separate from each alarm's own ALARM THEME). Live re-skin.
   $appLbl = New-Object System.Windows.Forms.Label; $appLbl.Text="APP THEME"; $appLbl.Left=600; $appLbl.Top=52; $appLbl.Width=120; $appLbl.Height=20; $appLbl.TextAlign='MiddleRight'; $appLbl.ForeColor=$script:pn_pal.Accent2; $appLbl.BackColor=[System.Drawing.Color]::Transparent; $appLbl.Font=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($appLbl)
   $script:pn_appTheme = New-ThemeCombo; $script:pn_appTheme.Left=728; $script:pn_appTheme.Top=49; $script:pn_appTheme.Width=130; $script:pn_appTheme.Items.AddRange(@('green','red','cyber','crt')); $script:pn_appTheme.Font=$fLb; Style-ThemeCombo $script:pn_appTheme $script:pn_pal
