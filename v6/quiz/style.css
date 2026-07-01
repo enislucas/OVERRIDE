@@ -1,5 +1,5 @@
 /* OVERRIDE v4 // themed quiz stylesheet
-   One file, four themes: html.t-green / .t-red / .t-cyber / .t-crt
+   One file, four themes: html.t-green / .t-red / .t-cyber / .t-boring
    Rules: no CSS variables (mshta fallback must render), explicit colors per theme.
    Ambient layers are static (free); animations are short bursts or tiny elements.
    Modern extras (clip-path slicing) live inside @supports so IE degrades gracefully. */
@@ -174,46 +174,35 @@ input#ans{font-size:26px;width:420px;padding:9px 12px;border-radius:8px;outline:
 .t-cyber #stats{color:#3d7d8a;}
 .t-cyber #stamp{color:#f0f;text-shadow:0 0 12px rgba(255,0,255,.8);}
 
-/* ================= THEME: crt (deep CRT monitor sim) ================= */
-.t-crt body,.t-crt #ended{color:#2cff8c;}
-.t-crt #crtwrap{position:fixed;top:14px;left:14px;right:14px;bottom:14px;width:auto;height:auto;
-  border-radius:48px/38px;overflow:hidden;background:#020a04;
-  box-shadow:inset 0 0 120px rgba(0,0,0,.95),inset 0 0 40px rgba(0,80,30,.4),0 0 30px rgba(0,255,102,.15);}
-.t-crt #vignette{background:radial-gradient(ellipse at center,rgba(0,255,102,.08) 0%,rgba(0,0,0,0) 55%,rgba(0,0,0,.85) 100%);}
-.t-crt #scan{background:repeating-linear-gradient(0deg,rgba(0,0,0,.32) 0 2px,rgba(0,0,0,0) 2px 5px);z-index:30;}
-.t-crt #flash.on{background:rgba(255,30,30,.14);}
-.t-crt #panel{background:rgba(0,0,0,0);border:none;box-shadow:none;width:880px;}
-.t-crt #topbar{border-bottom:1px solid rgba(0,255,102,.3);background:none;}
-.t-crt .brand{color:#19c97a;text-shadow:1px 0 rgba(255,60,60,.45),-1px 0 rgba(60,120,255,.45),0 0 10px rgba(0,255,102,.8);}
-.t-crt #clock{color:#7CFFB0;text-shadow:1px 0 rgba(255,60,60,.5),-1px 0 rgba(60,120,255,.5),0 0 12px #0f8;}
-.t-crt #clock.low{color:#ff5b5b;}
-.t-crt h1{color:#2cff8c;font-size:38px;letter-spacing:2px;
-  text-shadow:1.5px 0 rgba(255,60,60,.55),-1.5px 0 rgba(60,120,255,.55),0 0 22px rgba(0,255,102,.9),0 0 60px rgba(0,255,102,.4);}
-.t-crt .sub{color:#19c97a;text-shadow:0 0 8px rgba(0,255,102,.6);}
-.t-crt #prog{color:#0f9460;text-shadow:0 0 6px rgba(0,255,102,.5);}
-.t-crt .dot{background:#03200f;border-color:#0f9460;}
-.t-crt .dot.on{background:#2cff8c;box-shadow:0 0 12px rgba(0,255,102,.9);}
-.t-crt .dot.cur{border-color:#2cff8c;}
-.t-crt .cat{color:#0f9460;text-shadow:0 0 6px rgba(0,255,102,.5);}
-.t-crt #qtext{color:#b8ffd9;font-size:36px;
-  text-shadow:1.5px 0 rgba(255,60,60,.5),-1.5px 0 rgba(60,120,255,.5),0 0 18px rgba(0,255,102,.8);}
-.t-crt input#ans{background:rgba(0,30,12,.5);color:#b8ffd9;border-color:#0f9460;border-radius:0;
-  text-shadow:0 0 10px rgba(0,255,102,.7);}
-.t-crt input#ans:focus{border-color:#2cff8c;box-shadow:0 0 16px rgba(0,255,102,.6);}
-.t-crt input#ans.ok{border-color:#2cff8c;box-shadow:0 0 18px rgba(0,255,102,.9);}
-.t-crt input#ans.bad{border-color:#ff5b5b;box-shadow:0 0 14px rgba(255,40,40,.8);}
-.t-crt #go{background:rgba(0,30,12,.6);color:#2cff8c;border-color:#0f9460;border-radius:0;
-  text-shadow:0 0 10px rgba(0,255,102,.8);}
-.t-crt #go:hover{background:#2cff8c;color:#020a04;}
-.t-crt #hint{color:#0f9460;}
-.t-crt .bad{color:#ff5b5b;text-shadow:0 0 10px #f00;}
-.t-crt .good{color:#2cff8c;text-shadow:0 0 10px #0f6;}
-.t-crt #done h1{color:#2cff8c;}
-.t-crt #quote{color:#b8ffd9;text-shadow:0 0 10px rgba(0,255,102,.6);}
-.t-crt #stats{color:#0f9460;}
-.t-crt #stamp{color:#2cff8c;text-shadow:0 0 14px rgba(0,255,102,.9);}
-/* faint CRT flicker — tiny opacity oscillation on the glow layer only (cheap) */
-@supports (clip-path: inset(0)) {
-  .t-crt #vignette{animation:crtflick 4s infinite;}
-  @keyframes crtflick{0%,93%,100%{opacity:1;}94%{opacity:.82;}95%{opacity:.96;}97%{opacity:.88;}}
-}
+/* ================= THEME: boring (The Boring Company: black / white, clean, no neon) ================= */
+.t-boring body,.t-boring #ended{color:#e9e9ec;font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;}
+.t-boring #vignette{background:radial-gradient(ellipse at center,rgba(255,255,255,.02) 0%,rgba(0,0,0,0) 55%,rgba(0,0,0,.6) 100%);}
+.t-boring #scan{background:none;}
+.t-boring #flash.on{background:rgba(255,255,255,.06);}
+.t-boring #panel{background:#0d0d0f;border:1px solid #34343a;border-radius:6px;box-shadow:0 12px 48px rgba(0,0,0,.6);}
+.t-boring #topbar{border-bottom:1px solid #2a2a30;background:rgba(255,255,255,.03);border-radius:6px 6px 0 0;letter-spacing:2px;}
+.t-boring .brand{color:#a9a9b0;}
+.t-boring #clock{color:#e9e9ec;}
+.t-boring #clock.low{color:#e06c6c;}
+.t-boring h1{color:#f4f4f6;text-shadow:none;letter-spacing:0;}
+.t-boring .sub{color:#9a9aa2;}
+.t-boring #prog{color:#74747c;}
+.t-boring .dot{background:#1e1e22;border-color:#45454d;border-radius:4px;}
+.t-boring .dot.on{background:#e9e9ec;box-shadow:none;}
+.t-boring .dot.cur{border-color:#bcbcc4;}
+.t-boring .cat{color:#74747c;letter-spacing:2px;}
+.t-boring #qtext{color:#f0f0f2;text-shadow:none;}
+.t-boring input#ans,.t-boring #go{font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;}
+.t-boring input#ans{background:#111114;color:#f0f0f2;border-color:#45454d;border-radius:4px;text-shadow:none;}
+.t-boring input#ans:focus{border-color:#c9c9d0;box-shadow:none;}
+.t-boring input#ans.ok{border-color:#dcdce0;box-shadow:none;}
+.t-boring input#ans.bad{border-color:#e06c6c;box-shadow:none;}
+.t-boring #go{background:#1a1a1e;color:#e9e9ec;border-color:#45454d;border-radius:4px;text-shadow:none;letter-spacing:1px;}
+.t-boring #go:hover{background:#e9e9ec;color:#0d0d0f;}
+.t-boring #hint{color:#6a6a72;}
+.t-boring .bad{color:#e06c6c;text-shadow:none;}
+.t-boring .good{color:#dcdce0;text-shadow:none;}
+.t-boring #done h1{color:#f4f4f6;}
+.t-boring #quote{color:#d8d8dc;}
+.t-boring #stats{color:#74747c;}
+.t-boring #stamp{color:#e9e9ec;letter-spacing:3px;}

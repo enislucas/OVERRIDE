@@ -11,6 +11,11 @@ param(
 # (no -StartWhenAvailable + Get-RingLatenessMin skip-if->30min guard, bug museum #25).
 # v6.5 = checkbox visibility: owner-drawn high-contrast check (bright accent box + dark tick) on
 # every theme -- the old accent-check-on-accent-fill was red-on-red, invisible.
+# v6.6 = (a) question cap raised 6 -> 50; (b) 'decreasing sound' toggle: each correct answer lowers
+# the alarm volume a step (floor 20), but stalling > 30s on a question snaps it back to 100 -- so
+# steady solving is rewarded, dozing off is not (quiz drives it via env.setVolume -> /vol beacon or
+# session.vol file -> ring [Vol]::Set(rg_volTarget)); (c) 'crt' theme replaced by 'boring' (The
+# Boring Company black/white minimal, no neon).
 # v5 = frozen rollback (tag v5-stable).
 # Same architecture as v3 (scheduled tasks -> one ephemeral ring, 0 CPU between alarms),
 # plus:
@@ -33,12 +38,12 @@ $script:quizHta  = Join-Path $script:root "quiz\quiz.hta"
 $script:quizHtml = Join-Path $script:root "quiz\quiz.html"
 $script:CATS = @('arithmetic','derivatives','vectors','matrices','capitals',
                  'equations','percentages','powers','sequences','integrals','binary','elements')
-$script:THEMES = @('green','red','cyber','crt','roulette')
+$script:THEMES = @('green','red','cyber','boring','roulette')
 
 function New-DefaultConfig {
   $cats = [ordered]@{}; foreach ($c in $script:CATS) { $cats[$c] = ($c -eq 'arithmetic') }
   [pscustomobject]@{ version = 5
-    defaults = [pscustomobject]@{ difficulty='hard'; numQuestions=3; durationMin=3; lockVolume=$true; narrator=$true; matrixRain=$true; theme='green'; renderer='auto'; edgeMinFreeMB=900; lockdownMaxMin=6; autoBurn=$true; categories=[pscustomobject]$cats }
+    defaults = [pscustomobject]@{ difficulty='hard'; numQuestions=3; durationMin=3; lockVolume=$true; narrator=$true; matrixRain=$true; theme='green'; renderer='auto'; edgeMinFreeMB=900; lockdownMaxMin=6; autoBurn=$true; softenVolume=$false; categories=[pscustomobject]$cats }
     alarms   = @() }
 }
 function Load-Config {
@@ -83,6 +88,7 @@ public static class Vol {
     IMMDevice dev; en.GetDefaultAudioEndpoint(0,0,out dev);
     Guid iid=new Guid("5CDF2C82-841E-4546-9722-0CF74078229A"); object o; dev.Activate(ref iid,23,IntPtr.Zero,out o); _v=(IAudioEndpointVolume)o; }
   public static void Force() { _v.SetMasterVolumeLevelScalar(1f, ref _e); _v.SetMute(false, ref _e); }
+  public static void Set(float s) { if (s < 0f) s = 0f; if (s > 1f) s = 1f; _v.SetMasterVolumeLevelScalar(s, ref _e); _v.SetMute(false, ref _e); }
 }
 "@
 try { Add-Type -TypeDefinition $volSrc -Language CSharp } catch {}
@@ -299,7 +305,7 @@ function Get-Prop($obj, [string]$name, $default) {
   return $default
 }
 function Resolve-Theme([string]$t) {
-  if ($t -eq 'roulette' -or -not $t) { return @('green','red','cyber','crt') | Get-Random }
+  if ($t -eq 'roulette' -or -not $t) { return @('green','red','cyber','boring') | Get-Random }
   if ($script:THEMES -contains $t) { return $t }
   return 'green'
 }
@@ -311,7 +317,7 @@ function Get-PanelPalette([string]$theme) {
   switch ($t) {
     'red'   { @{ Accent=(C 255 60 75);  Accent2=(C 255 120 60); Dim=(C 255 175 180); Box=(C 20 1 4);  Field=(C 40 2 8);   Row=(C 36 3 9);  Glow=(C 255 40 60);  Rain=(C 255 55 70);  Scan=(C 60 0 0) } }
     'cyber' { @{ Accent=(C 60 255 255); Accent2=(C 255 70 220); Dim=(C 210 180 255); Box=(C 10 7 30); Field=(C 18 14 46); Row=(C 20 14 44); Glow=(C 255 0 230);  Rain=(C 0 255 255);  Scan=(C 0 40 50) } }
-    'crt'   { @{ Accent=(C 60 255 150); Accent2=(C 0 230 130);  Dim=(C 150 255 200); Box=(C 2 16 7);  Field=(C 0 30 13);  Row=(C 0 28 12); Glow=(C 0 255 120);  Rain=(C 60 255 150); Scan=(C 0 48 20) } }
+    'boring' { @{ Accent=(C 235 235 238); Accent2=(C 175 175 182); Dim=(C 150 150 158); Box=(C 14 14 16); Field=(C 26 26 30); Row=(C 22 22 26); Glow=(C 90 90 98);  Rain=(C 200 200 208); Scan=(C 30 30 34) } }
     default { @{ Accent=(C 0 255 120);  Accent2=(C 120 255 90);  Dim=(C 150 255 195); Box=(C 0 16 7);  Field=(C 0 32 14);  Row=(C 0 28 12); Glow=(C 0 255 120);  Rain=(C 0 255 120);  Scan=(C 0 40 18) } }
   }
 }
@@ -322,7 +328,7 @@ function Get-ComboOptionColors([string]$name) {
     'green'    { @{ A=(C 0 30 13);   B=(C 0 52 22);   Fg=(C 130 255 165) } }   # phosphor green
     'red'      { @{ A=(C 36 0 8);    B=(C 78 4 14);   Fg=(C 255 110 122) } }   # alert red
     'cyber'    { @{ A=(C 0 44 60);   B=(C 52 0 64);   Fg=(C 240 250 255) } }   # cyan -> magenta
-    'crt'      { @{ A=(C 1 22 10);   B=(C 3 40 18);   Fg=(C 80 255 160) } }    # deep CRT green
+    'boring'   { @{ A=(C 20 20 22);  B=(C 40 40 44);  Fg=(C 235 235 238) } }   # black / white minimal
     'roulette' { @{ A=(C 12 10 28);  B=(C 44 6 44);   Fg=(C 215 210 255) } }   # mixed/lavender
     default    { @{ A=(C 0 20 9);    B=(C 0 34 16);   Fg=(C 190 230 200) } }
   }
@@ -467,15 +473,16 @@ function Get-AlarmSettings($id) {
   $lbl  = [string](Get-Prop $a 'label' 'WAKE UP')
   $rend = [string](Get-Prop $a 'renderer'     (Get-Prop $d 'renderer' 'auto'))
   $emf  = [int]   (Get-Prop $a 'edgeMinFreeMB' (Get-Prop $d 'edgeMinFreeMB' 900))
+  $sft  = [bool]  (Get-Prop $a 'softenVolume' (Get-Prop $d 'softenVolume' $false))
   if ($dur -lt 1) { $dur = 1 }
   $tm  = [string](Get-Prop $a 'time' '')
   $dte = [string](Get-Prop $a 'date' '')
   $rhy = ($null -ne $a) -and ($a.PSObject.Properties.Name -contains 'rhythm') -and [bool]$a.rhythm
-  return @{ Label=$lbl; Diff=$diff; NumQ=$nq; Cats=(Convert-Cats $catO); DurationSec=($dur*60); LockVol=$lv; Narrator=$nar; MatrixRain=$mr; Theme=$thm; Renderer=$rend; EdgeMinFreeMB=$emf; Lockdown=$true; Relaunch=$true; Quiet=$false; Time=$tm; Date=$dte; Rhythm=$rhy }
+  return @{ Label=$lbl; Diff=$diff; NumQ=$nq; Cats=(Convert-Cats $catO); DurationSec=($dur*60); LockVol=$lv; Narrator=$nar; MatrixRain=$mr; Theme=$thm; Renderer=$rend; EdgeMinFreeMB=$emf; Soften=$sft; Lockdown=$true; Relaunch=$true; Quiet=$false; Time=$tm; Date=$dte; Rhythm=$rhy }
 }
 function Get-TestSettings {
   $p = Join-Path $script:root 'session.testcfg'
-  $diff='hard'; $nq=3; $cats=(Convert-Cats (Get-Prop $script:cfg.defaults 'categories' $null)); $dur=45; $lv=$true; $mr=$true; $nar=$true; $quiet=$false; $rel=$false
+  $diff='hard'; $nq=3; $cats=(Convert-Cats (Get-Prop $script:cfg.defaults 'categories' $null)); $dur=45; $lv=$true; $mr=$true; $nar=$true; $quiet=$false; $rel=$false; $soft=$false
   $thm=[string](Get-Prop $script:cfg.defaults 'theme' 'green')
   $rend=[string](Get-Prop $script:cfg.defaults 'renderer' 'auto'); $emf=[int](Get-Prop $script:cfg.defaults 'edgeMinFreeMB' 900)
   if (Test-Path $p) { try { $t = Get-Content $p -Raw | ConvertFrom-Json
@@ -491,9 +498,10 @@ function Get-TestSettings {
     if ($t.PSObject.Properties.Name -contains 'relaunch')   { $rel=[bool]$t.relaunch }   # test the anti-thrash relaunch path
     if ($t.PSObject.Properties.Name -contains 'renderer')   { $rend=[string]$t.renderer }
     if ($t.PSObject.Properties.Name -contains 'edgeMinFreeMB'){ $emf=[int]$t.edgeMinFreeMB }
+    if ($t.PSObject.Properties.Name -contains 'softenVolume'){ $soft=[bool]$t.softenVolume }
   } catch {} }
   if ($quiet) { $lv = $false; $nar = $false }
-  return @{ Label='TEST'; Diff=$diff; NumQ=$nq; Cats=$cats; DurationSec=$dur; LockVol=$lv; Narrator=$nar; MatrixRain=$mr; Theme=$thm; Renderer=$rend; EdgeMinFreeMB=$emf; Lockdown=$false; Relaunch=$rel; Quiet=$quiet; Time=''; Date=''; Rhythm=$false }
+  return @{ Label='TEST'; Diff=$diff; NumQ=$nq; Cats=$cats; DurationSec=$dur; LockVol=$lv; Narrator=$nar; MatrixRain=$mr; Theme=$thm; Renderer=$rend; EdgeMinFreeMB=$emf; Soften=$soft; Lockdown=$false; Relaunch=$rel; Quiet=$quiet; Time=''; Date=''; Rhythm=$false }
 }
 
 # How many minutes late is THIS ring vs the alarm's intended fire time? (signed; >0 = late, <0 = early)
@@ -556,6 +564,9 @@ function Pump-Listener {
         $k = $Matches[1]
         if ($k -eq $script:rg_key) { Set-Content -Path (Join-Path $script:root 'UNLOCK') -Value $k -Encoding ASCII }
       }
+      elseif ($req -match '^GET\s+/vol\?level=(\d{1,3})') {
+        $vl = [int]$Matches[1]; if ($vl -lt 0) { $vl = 0 }; if ($vl -gt 100) { $vl = 100 }; $script:rg_volTarget = $vl   # v6.6 decreasing-sound
+      }
       # a REAL 43-byte 1x1 GIF — must actually DECODE so the browser's <img> beacon fires onload
       # and resets its failure counter. Replying with the bare string "GIF89a" made every beat
       # fail to decode -> the quiz wrongly concluded "engine gone" and closed itself at ~12s.
@@ -588,6 +599,7 @@ function Get-QuizUrl {
         "&n=$($script:rg_S.NumQ)&diff=$($script:rg_S.Diff)&cats=$catCsv" +
         "&rain=$(if ($script:rg_S.MatrixRain) {1} else {0})" +
         "&deadline=$($script:rg_dlms)&theme=$($script:rg_theme)" +
+        "&soften=$(if ($script:rg_S.Soften) {1} else {0})" +
         "&user=$([uri]::EscapeDataString($env:USERNAME))"
   "$pathUri`?$qs"
 }
@@ -646,7 +658,7 @@ function Stop-QuizProcs {
 
 # ---- the ring engine -------------------------------------------------------
 function Remove-RingFiles {
-  foreach ($f in 'UNLOCK','PANIC','session.beat','session.key','session.deadline','session.deadlinems','session.start','session.label','session.quizcfg','session.render') {
+  foreach ($f in 'UNLOCK','PANIC','session.beat','session.key','session.deadline','session.deadlinems','session.start','session.label','session.quizcfg','session.render','session.vol') {
     $p = Join-Path $script:root $f; if (Test-Path $p) { try { [System.IO.File]::Delete($p) } catch {} }
   }
 }
@@ -661,6 +673,12 @@ function Ring-Tick {
   $now = Get-Date
   try { Set-Content -Path (Join-Path $script:root 'session.beat') -Value ($now.Ticks) -Encoding ASCII } catch {}
   Pump-Listener
+  # decreasing-sound (v6.6): the mshta quiz writes its target level to session.vol; the Edge quiz
+  # sends it via the /vol beacon (handled in Pump-Listener). Either way, rg_volTarget drives the vol timer.
+  if ($script:rg_soften) {
+    $vf = Join-Path $script:root 'session.vol'
+    if (Test-Path $vf) { try { $vv = (Get-Content $vf -Raw); if ($vv) { $vi = 0; if ([int]::TryParse($vv.Trim(), [ref]$vi)) { if ($vi -lt 0) { $vi = 0 }; if ($vi -gt 100) { $vi = 100 }; $script:rg_volTarget = $vi } } } catch {} }
+  }
   $unlk = Join-Path $script:root 'UNLOCK'
   if (Test-Path $unlk) { $c = (Get-Content $unlk -Raw); if ($c) { $c = $c.Trim() }; if ($c -eq $script:rg_key) { $script:rg_solved = $true; End-Ring; return } }
   if ($now -ge $script:rg_deadline -or (Test-Path (Join-Path $script:root 'PANIC'))) { End-Ring; return }
@@ -716,7 +734,7 @@ function Run-Ring {
   param([hashtable]$S)
   $script:rg_exiting = $false
   $script:rg_S = $S
-  foreach ($f in 'UNLOCK','PANIC','session.beat') { $q = Join-Path $script:root $f; if (Test-Path $q) { try { [System.IO.File]::Delete($q) } catch {} } }
+  foreach ($f in 'UNLOCK','PANIC','session.beat','session.vol') { $q = Join-Path $script:root $f; if (Test-Path $q) { try { [System.IO.File]::Delete($q) } catch {} } }
   $key = [guid]::NewGuid().ToString('N')
   $start = Get-Date; $script:rg_deadline = $start.AddSeconds($S.DurationSec); $script:rg_key = $key
   $script:rg_theme = Resolve-Theme $S.Theme
@@ -726,10 +744,11 @@ function Run-Ring {
   Set-Content -Path (Join-Path $script:root 'session.deadlinems') -Value $script:rg_dlms -Encoding ASCII
   Set-Content -Path (Join-Path $script:root 'session.start')    -Value ($start.ToString('o')) -Encoding ASCII
   Set-Content -Path (Join-Path $script:root 'session.label')    -Value $S.Label -Encoding ASCII
-  $qc = [ordered]@{ numQuestions = $S.NumQ; difficulty = $S.Diff; categories = $S.Cats; matrixRain = $S.MatrixRain; theme = $script:rg_theme; user = $env:USERNAME }
+  $qc = [ordered]@{ numQuestions = $S.NumQ; difficulty = $S.Diff; categories = $S.Cats; matrixRain = $S.MatrixRain; theme = $script:rg_theme; soften = [bool]$S.Soften; user = $env:USERNAME }
   ($qc | ConvertTo-Json -Compress) | Set-Content -Path (Join-Path $script:root 'session.quizcfg') -Encoding ASCII
 
   $script:rg_relaunch = $S.Relaunch; $script:rg_lockdown = $S.Lockdown; $script:rg_lockVol = $S.LockVol; $script:rg_narrator = $S.Narrator
+  $script:rg_soften = [bool]$S.Soften; $script:rg_volTarget = 100    # v6.6 decreasing-sound target (100 = full)
   $script:rg_proc = $null; $script:rg_sndIdx = 0; $script:rg_nagAt = $start.AddSeconds(16); $script:rg_tk = 0; $script:rg_pinnedH = [IntPtr]::Zero
   $script:rg_launchGrace = 12; $script:rg_launchAt = $start; $script:rg_lastQuizSeen = $start   # anti-thrash (bug museum #17)
   # LOCKDOWN CAP (audit fix #20): the keyboard hook lives in THIS process; the +6min safe task
@@ -771,10 +790,13 @@ function Run-Ring {
       $script:rg_voiceNames = @($script:rg_voice.GetInstalledVoices() | Where-Object { $_.Enabled } | ForEach-Object { $_.VoiceInfo.Name })
     } catch { $script:rg_voice = $null }
   }
-  if ($script:rg_lockVol) { try { [Vol]::Init() } catch {} }
+  if ($script:rg_lockVol -or $script:rg_soften) { try { [Vol]::Init() } catch {} }
 
   $script:rg_volTimer = New-Object System.Windows.Forms.Timer; $script:rg_volTimer.Interval = 200
-  $script:rg_volTimer.Add_Tick({ if ($script:rg_lockVol) { try { [Vol]::Force() } catch {} } })
+  $script:rg_volTimer.Add_Tick({
+    if ($script:rg_soften) { try { [Vol]::Set([single]([Math]::Max(0,[Math]::Min(100,[int]$script:rg_volTarget))/100.0)) } catch {} }
+    elseif ($script:rg_lockVol) { try { [Vol]::Force() } catch {} }
+  })
   $script:rg_mainTimer = New-Object System.Windows.Forms.Timer; $script:rg_mainTimer.Interval = 500
   $script:rg_mainTimer.Add_Tick({ Ring-Tick })
   $script:rg_sndTimer = New-Object System.Windows.Forms.Timer; $script:rg_sndTimer.Interval = 3500
@@ -790,12 +812,15 @@ function Run-Ring {
   if ($script:rg_lockdown) { try { [Lockdown]::Install() } catch {}; Set-TaskMgrDisabled $true }
   Launch-Quiz
   if ($script:rg_haveSnd) { $arr = @($script:rg_tierA); if ($arr.Count -gt 0) { $pp = $arr | Get-Random; try { $script:rg_player.SoundLocation = $pp; $script:rg_player.Load(); $script:rg_player.PlayLooping() } catch {} } }
-  if ($script:rg_lockVol) { try { [Vol]::Force() } catch {} }
+  if ($script:rg_soften) { try { [Vol]::Set([single]1) } catch {} } elseif ($script:rg_lockVol) { try { [Vol]::Force() } catch {} }
   if ($script:rg_narrator) { Speak-Line ($script:START_LINES | Get-Random) }
   $script:rg_volTimer.Start(); $script:rg_mainTimer.Start(); $script:rg_sndTimer.Start()
 
   try { [System.Windows.Forms.Application]::Run() }
   finally {
+    # v6.6: a decreasing-sound alarm drove the master volume down; restore it to full on exit so we
+    # never leave the PC permanently quiet (plain lockVolume already left it at 100 via Force()).
+    if ($script:rg_soften) { try { [Vol]::Set([single]1) } catch {} }
     try { $script:rg_volTimer.Stop(); $script:rg_volTimer.Dispose() } catch {}
     try { $script:rg_mainTimer.Stop(); $script:rg_mainTimer.Dispose() } catch {}
     try { $script:rg_sndTimer.Stop(); $script:rg_sndTimer.Dispose() } catch {}
@@ -939,6 +964,7 @@ function New-Alarm { param($d)
     Diff=[string](Get-Prop $d 'difficulty' 'hard'); NumQ=[int](Get-Prop $d 'numQuestions' 3); DurationMin=[int](Get-Prop $d 'durationMin' 3)
     LockVol=[bool](Get-Prop $d 'lockVolume' $true); Narrator=[bool](Get-Prop $d 'narrator' $true)
     Rain=[bool](Get-Prop $d 'matrixRain' $true); Theme=[string](Get-Prop $d 'theme' 'green')
+    Soften=[bool](Get-Prop $d 'softenVolume' $false)
     Cats=(Convert-Cats (Get-Prop $d 'categories' $null)) }
 }
 function Import-PriorConfig {
@@ -985,6 +1011,7 @@ function Panel-LoadAlarms {
       Narrator=[bool](Get-Prop $a 'narrator' (Get-Prop $d 'narrator' $true))
       Rain=[bool](Get-Prop $a 'matrixRain' (Get-Prop $d 'matrixRain' $true))
       Theme=[string](Get-Prop $a 'theme' (Get-Prop $d 'theme' 'green'))
+      Soften=[bool](Get-Prop $a 'softenVolume' (Get-Prop $d 'softenVolume' $false))
       Cats=(Convert-Cats (Get-Prop $a 'categories' (Get-Prop $d 'categories' $null)))
     }
   }
@@ -1046,7 +1073,7 @@ function Panel-LoadEditor($al) {
   else { $script:pn_editId = $al.Id; $script:pn_saveBtn.Text = 'SAVE CHANGES' }
   $script:pn_eTime.Text = $al.Time; $script:pn_eLabel.Text = $al.Label; $script:pn_eDate.Text = $al.Date
   $script:pn_eRhythm.Checked = $al.Rhythm; $script:pn_eLockVol.Checked = $al.LockVol; $script:pn_eNarr.Checked = $al.Narrator
-  $script:pn_eRain.Checked = $al.Rain
+  $script:pn_eRain.Checked = $al.Rain; $script:pn_eSoften.Checked = [bool]$al.Soften
   $script:pn_eDate.Enabled = -not $al.Rhythm
   $script:pn_eDur.Text = [string]$al.DurationMin
   $script:pn_eDiff.SelectedItem = $al.Diff; if ($null -eq $script:pn_eDiff.SelectedItem) { $script:pn_eDiff.SelectedItem = 'hard' }
@@ -1070,7 +1097,7 @@ function Panel-CollectEditor {
   [pscustomobject]@{ Id=$id; Label=$lab; Time=$t; Date=$dateOut; Rhythm=$rhythm; Enabled=$true
     Diff=[string]$script:pn_eDiff.SelectedItem; NumQ=[int]$script:pn_eNumQ.SelectedItem; DurationMin=$dur
     LockVol=[bool]$script:pn_eLockVol.Checked; Narrator=[bool]$script:pn_eNarr.Checked
-    Rain=[bool]$script:pn_eRain.Checked; Theme=[string]$script:pn_eTheme.SelectedItem; Cats=$cats }
+    Rain=[bool]$script:pn_eRain.Checked; Theme=[string]$script:pn_eTheme.SelectedItem; Soften=[bool]$script:pn_eSoften.Checked; Cats=$cats }
 }
 function Panel-SaveAlarm {
   $a = Panel-CollectEditor; if (-not $a) { return }
@@ -1083,7 +1110,7 @@ function Panel-SaveAlarm {
 }
 function Panel-SaveConfig {
   $alist = @()
-  foreach ($al in $script:pn_alarms) { $alist += [ordered]@{ id=$al.Id; label=$al.Label; time=$al.Time; date=$al.Date; rhythm=$al.Rhythm; enabled=$al.Enabled; difficulty=$al.Diff; numQuestions=$al.NumQ; durationMin=$al.DurationMin; lockVolume=$al.LockVol; narrator=$al.Narrator; matrixRain=$al.Rain; theme=$al.Theme; categories=$al.Cats } }
+  foreach ($al in $script:pn_alarms) { $alist += [ordered]@{ id=$al.Id; label=$al.Label; time=$al.Time; date=$al.Date; rhythm=$al.Rhythm; enabled=$al.Enabled; difficulty=$al.Diff; numQuestions=$al.NumQ; durationMin=$al.DurationMin; lockVolume=$al.LockVol; narrator=$al.Narrator; matrixRain=$al.Rain; theme=$al.Theme; softenVolume=$al.Soften; categories=$al.Cats } }
   $obj = [ordered]@{ version=5; defaults=$script:cfg.defaults; alarms=$alist }
   try { if (Test-Path $script:cfgPath) { Copy-Item $script:cfgPath "$($script:cfgPath).bak" -Force } } catch {}
   ($obj | ConvertTo-Json -Depth 8) | Out-File -FilePath $script:cfgPath -Encoding utf8
@@ -1138,7 +1165,7 @@ function Panel-UpdateStatus {
 }
 function Panel-Test {
   $a = Panel-CollectEditor; if (-not $a) { return }
-  $tc = [ordered]@{ numQuestions=$a.NumQ; difficulty=$a.Diff; categories=$a.Cats; lockVolume=$a.LockVol; narrator=$a.Narrator; matrixRain=$a.Rain; theme=$a.Theme }
+  $tc = [ordered]@{ numQuestions=$a.NumQ; difficulty=$a.Diff; categories=$a.Cats; lockVolume=$a.LockVol; narrator=$a.Narrator; matrixRain=$a.Rain; theme=$a.Theme; softenVolume=$a.Soften }
   ($tc | ConvertTo-Json -Compress) | Out-File -FilePath (Join-Path $script:root 'session.testcfg') -Encoding ascii
   Panel-Log "launching test ring (solve it or wait 45s)... theme: $($a.Theme)"
   try { Start-Process (Get-Command powershell).Source -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -Sta -WindowStyle Hidden -File "{0}\override.ps1" -Ring -TestNow' -f $script:eng) | Out-Null } catch { Panel-Log ("test error: " + $_.Exception.Message) }
@@ -1209,7 +1236,7 @@ function Show-PanelGui {
   $fL=New-Object System.Drawing.Font('Consolas',10); $fLb=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold)
 
   $script:pn_form = New-Object System.Windows.Forms.Form
-  $script:pn_form.Text = "OVERRIDE // CONTROL v6.5"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
+  $script:pn_form.Text = "OVERRIDE // CONTROL v6.6"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
   $script:pn_form.StartPosition = 'CenterScreen'; $script:pn_form.MinimumSize = New-Object System.Drawing.Size(1040,860)
   $script:pn_form.WindowState = 'Maximized'; $script:pn_form.BackColor = [System.Drawing.Color]::Black
   $ico = Join-Path $script:eng 'override.ico'; if (Test-Path $ico) { try { $script:pn_form.Icon = New-Object System.Drawing.Icon $ico } catch {} }
@@ -1234,10 +1261,10 @@ function Show-PanelGui {
   $script:pn_form.Controls.Add($script:pn_box); $script:pn_rain.Panel.SendToBack()
 
   $hdr = New-Object System.Windows.Forms.Label; $hdr.Text=("OVERRIDE // CONTROL   "+[char]0x03A9); $hdr.Left=18; $hdr.Top=12; $hdr.Width=680; $hdr.Height=42; $hdr.ForeColor=$script:pn_pal.Accent; $hdr.BackColor=[System.Drawing.Color]::Transparent; $hdr.Font=New-Object System.Drawing.Font('Consolas',24,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($hdr)
-  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v6.5"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
+  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v6.6"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
   # APP THEME — skins THIS control panel (separate from each alarm's own ALARM THEME). Live re-skin.
   $appLbl = New-Object System.Windows.Forms.Label; $appLbl.Text="APP THEME"; $appLbl.Left=600; $appLbl.Top=52; $appLbl.Width=120; $appLbl.Height=20; $appLbl.TextAlign='MiddleRight'; $appLbl.ForeColor=$script:pn_pal.Accent2; $appLbl.BackColor=[System.Drawing.Color]::Transparent; $appLbl.Font=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($appLbl)
-  $script:pn_appTheme = New-ThemeCombo; $script:pn_appTheme.Left=728; $script:pn_appTheme.Top=49; $script:pn_appTheme.Width=130; $script:pn_appTheme.Items.AddRange(@('green','red','cyber','crt')); $script:pn_appTheme.Font=$fLb; Style-ThemeCombo $script:pn_appTheme $script:pn_pal
+  $script:pn_appTheme = New-ThemeCombo; $script:pn_appTheme.Left=728; $script:pn_appTheme.Top=49; $script:pn_appTheme.Width=130; $script:pn_appTheme.Items.AddRange(@('green','red','cyber','boring')); $script:pn_appTheme.Font=$fLb; Style-ThemeCombo $script:pn_appTheme $script:pn_pal
   $script:pn_appTheme.SelectedItem = $script:pn_theme
   $script:pn_appTheme.Add_SelectedIndexChanged({
     $sel = [string]$script:pn_appTheme.SelectedItem
@@ -1313,7 +1340,7 @@ function Show-PanelGui {
   (NewLbl "difficulty" 24 ($r2+4) 76 $false) | Out-Null
   $script:pn_eDiff = New-ThemeCombo; $script:pn_eDiff.Left=104; $script:pn_eDiff.Top=$r2; $script:pn_eDiff.Width=100; $script:pn_eDiff.Font=$fL; $script:pn_eDiff.Items.AddRange(@('easy','medium','hard')); Style-PlainCombo $script:pn_eDiff $script:pn_pal; $script:pn_box.Controls.Add($script:pn_eDiff)
   (NewLbl "questions" 220 ($r2+4) 80 $false) | Out-Null
-  $script:pn_eNumQ = New-ThemeCombo; $script:pn_eNumQ.Left=302; $script:pn_eNumQ.Top=$r2; $script:pn_eNumQ.Width=56; $script:pn_eNumQ.Font=$fL; $script:pn_eNumQ.Items.AddRange(@(1,2,3,4,5,6)); Style-PlainCombo $script:pn_eNumQ $script:pn_pal; $script:pn_box.Controls.Add($script:pn_eNumQ)
+  $script:pn_eNumQ = New-ThemeCombo; $script:pn_eNumQ.Left=302; $script:pn_eNumQ.Top=$r2; $script:pn_eNumQ.Width=56; $script:pn_eNumQ.Font=$fL; $script:pn_eNumQ.Items.AddRange(@(1,2,3,4,5,6,7,8,9,10,12,15,20,25,30,40,50)); Style-PlainCombo $script:pn_eNumQ $script:pn_pal; $script:pn_box.Controls.Add($script:pn_eNumQ)
   (NewLbl "duration" 374 ($r2+4) 68 $false) | Out-Null
   $script:pn_eDur = NewTb 444 $r2 46; (NewLbl "min" 494 ($r2+4) 36 $false) | Out-Null
   $script:pn_eLockVol = New-Object System.Windows.Forms.CheckBox; $script:pn_eLockVol.Text="lock volume"; $script:pn_eLockVol.Left=544; $script:pn_eLockVol.Top=($r2+2); $script:pn_eLockVol.Width=130; $script:pn_eLockVol.ForeColor=$dim; $script:pn_eLockVol.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eLockVol.Font=$fL; $script:pn_box.Controls.Add($script:pn_eLockVol); Style-Check $script:pn_eLockVol $script:pn_pal
@@ -1323,7 +1350,9 @@ function Show-PanelGui {
   $r2b = 416
   (NewLbl "ALARM THEME" 24 ($r2b+4) 110 $false) | Out-Null
   $script:pn_eTheme = New-ThemeCombo; $script:pn_eTheme.Left=140; $script:pn_eTheme.Top=$r2b; $script:pn_eTheme.Width=140; $script:pn_eTheme.Font=$fL; $script:pn_eTheme.Items.AddRange($script:THEMES); Style-ThemeCombo $script:pn_eTheme $script:pn_pal; $script:pn_box.Controls.Add($script:pn_eTheme)
-  (NewLbl "look of THIS alarm's ring  ( green=phosphor  red=alert  cyber=neon  crt=CRT  roulette=random each ring )" 294 ($r2b+5) 700 $true) | Out-Null
+  (NewLbl "ring look ( green / red / cyber / boring;  roulette = random )" 294 ($r2b+5) 440 $true) | Out-Null
+  $script:pn_eSoften = New-Object System.Windows.Forms.CheckBox; $script:pn_eSoften.Text="decreasing sound"; $script:pn_eSoften.Left=744; $script:pn_eSoften.Top=($r2b+2); $script:pn_eSoften.Width=230; $script:pn_eSoften.ForeColor=$dim; $script:pn_eSoften.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eSoften.Font=$fL; $script:pn_box.Controls.Add($script:pn_eSoften); Style-Check $script:pn_eSoften $script:pn_pal
+  $script:pn_tip.SetToolTip($script:pn_eSoften, "Each correct answer lowers the alarm volume a little (down to a floor).`r`nStall over 30s on a question and it snaps back to 100% - steady solving is rewarded, dozing off is not.")
 
   $r3 = 460
   (NewLbl "subjects" 24 ($r3+2) 80 $false) | Out-Null

@@ -25,6 +25,7 @@ function boot(){
   var cats=(qs("cats")||"arithmetic").split(",");
   var rain=(qs("rain")==="1"), deadlineMs=parseInt(qs("deadline"),10)||0;
   var theme=qs("theme")||"green", user=qs("user")||"";
+  var soften=(qs("soften")==="1");
   var base="http://127.0.0.1:"+port;
 
   // heartbeat: reuse ONE Image object instead of allocating a new one every 2s (audit fix #23 —
@@ -39,7 +40,8 @@ function boot(){
 
   OVERRIDE_UI.init({
     label: label, numQuestions: n, difficulty: diff, cats: cats,
-    matrixRain: rain, deadlineMs: deadlineMs, theme: theme, user: user,
+    matrixRain: rain, deadlineMs: deadlineMs, theme: theme, user: user, soften: soften,
+    setVolume: function(lvl){ beacon(base+"/vol?level="+lvl+"&key="+encodeURIComponent(key)); },
     speak: function(t){
       try{
         var u=new SpeechSynthesisUtterance(t), vs=window.speechSynthesis.getVoices();

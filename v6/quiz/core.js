@@ -4,7 +4,7 @@
    No arrow functions, no let/const, no template literals.
 
    v4 adds on top of v3 (generators are IDENTICAL — 14,400-question selftested):
-   - theme system: env.theme = green | red | cyber | crt   (html gets class t-<theme>)
+   - theme system: env.theme = green | red | cyber | boring   (html gets class t-<theme>)
    - effects: matrix rain (theme-coloured), RGB-split glitch burst on wrong,
      red screen flash on wrong, CJK-scramble "chinese vanish" on solve,
      CRT overlay (pure CSS, free), decrypt reveal + shake kept from v3
@@ -412,15 +412,19 @@ var OVERRIDE_UI = (function () {
   var C = OVERRIDE_CORE;
   var env = null, Q = null, N = 3, solved = 0, wrongs = 0;
   var lastSpoke = 0, revealTimer = null, started = null, finished = false;
-  var THEMES = { green: 1, red: 1, cyber: 1, crt: 1 };
-  var RAIN_COLORS = { green: ["#00ff66"], red: ["#ff2233", "#ff6b75"], cyber: ["#00ffff", "#ff00ff"], crt: ["#2cff8c"] };
+  // v6.6 decreasing-sound: each correct answer drops the alarm volume a step (floor VOL_FLOOR);
+  // stalling > VOL_RESET_MS on a question snaps it back to 100. The ring does the actual volume
+  // change; we just tell it the target via env.setVolume(level) when env.soften is on.
+  var volLevel = 100, qTimer = null, VOL_STEP = 8, VOL_FLOOR = 20, VOL_RESET_MS = 30000;
+  var THEMES = { green: 1, red: 1, cyber: 1, boring: 1 };
+  var RAIN_COLORS = { green: ["#00ff66"], red: ["#ff2233", "#ff6b75"], cyber: ["#00ffff", "#ff00ff"], boring: ["#c8c8cc", "#8a8a90"] };
 
   function el(id) { return document.getElementById(id); }
   function cjkChar() { return String.fromCharCode(0x4E00 + C.rnd(0, 0x4DBF)); }
 
   function buildDom() {
-    var i, dots = "";
-    for (i = 0; i < N; i++) dots += '<span class="dot" id="dot' + i + '"></span>';
+    var i, dots = "", nd = (N <= 12) ? N : 0;   // v6.6: skip the dot row for large N; the "VERIFIED x / N" text carries it
+    for (i = 0; i < nd; i++) dots += '<span class="dot" id="dot' + i + '"></span>';
     var h =
       '<canvas id="rain"></canvas><div id="vignette"></div><div id="scan"></div><div id="flash"></div>' +
       '<div id="crtwrap"><div id="stage"><div id="panel">' +
@@ -450,6 +454,13 @@ var OVERRIDE_UI = (function () {
     if (!force && now - lastSpoke < 5000) return;
     lastSpoke = now;
     try { env.speak(t); } catch (e) { }
+  }
+
+  /* ---- decreasing-sound (v6.6): tell the ring the current volume target ---- */
+  function sendVol() { try { if (env && env.setVolume) env.setVolume(volLevel); } catch (e) { } }
+  function armQTimer() {
+    if (qTimer) { clearTimeout(qTimer); qTimer = null; }
+    if (env && env.soften) { qTimer = setTimeout(function () { volLevel = 100; sendVol(); }, VOL_RESET_MS); }
   }
 
   function showErr() {
@@ -487,6 +498,7 @@ var OVERRIDE_UI = (function () {
     el('ans').value = ""; el('ans').className = "";
     revealText(Q.q);
     refreshProg();
+    armQTimer();                 // v6.6: start this question's 30s "answer or volume resets" window
     centerPanel();
     try { el('ans').focus(); } catch (e) { }
   }
@@ -537,6 +549,8 @@ var OVERRIDE_UI = (function () {
     var box = el('ans');
     if (C.isHit(Q, box.value)) {
       solved++;
+      if (qTimer) { clearTimeout(qTimer); qTimer = null; }
+      if (env.soften) { volLevel = Math.max(VOL_FLOOR, volLevel - VOL_STEP); sendVol(); }   // v6.6: quieter with each correct answer
       box.className = "ok";
       el('msg').innerHTML = '<span class="good">&gt; VERIFIED</span>';
       if (solved >= N) { victory(); return; }
@@ -573,6 +587,7 @@ var OVERRIDE_UI = (function () {
   function victory() {
     if (finished) return;
     finished = true;
+    if (qTimer) { clearTimeout(qTimer); qTimer = null; }
     /* unlock FIRST — the ring must stop even if the fancy ending breaks (invariant) */
     try { env.unlock(); } catch (e) { }
     if (revealTimer) { clearInterval(revealTimer); revealTimer = null; }
@@ -659,7 +674,8 @@ var OVERRIDE_UI = (function () {
 
   function init(envIn) {
     env = envIn;
-    N = env.numQuestions; if (isNaN(N) || N < 1) N = 3; if (N > 6) N = 6;
+    N = env.numQuestions; if (isNaN(N) || N < 1) N = 3; if (N > 50) N = 50;   // v6.6: cap raised 6 -> 50
+    volLevel = 100;
     if (!env.cats || env.cats.length === 0) env.cats = ["arithmetic"];
     if (!THEMES[env.theme]) env.theme = "green";
     try { document.documentElement.className = "t-" + env.theme; } catch (e) { }

@@ -61,7 +61,7 @@ function boot(){
   findDirs(); injectCss(); QUIZ_START=new Date();
   var KEY=OVERRIDE_CORE.trim(readFile(ROOT+"\\session.key"));
   var label=OVERRIDE_CORE.trim(readFile(ROOT+"\\session.label")) || "SYSTEM";
-  var n=3, diff="hard", cats=["arithmetic"], rain=false, deadlineMs=0, theme="green", user="";
+  var n=3, diff="hard", cats=["arithmetic"], rain=false, deadlineMs=0, theme="green", user="", soften=false;
   var s=readFile(ROOT+"\\session.quizcfg");
   if(s){ try{ var c=eval("("+s+")");
     if(c.numQuestions) n=parseInt(c.numQuestions,10);
@@ -70,13 +70,15 @@ function boot(){
     if(c.matrixRain) rain=true;
     if(c.theme) theme=String(c.theme);
     if(c.user) user=String(c.user);
+    if(c.soften) soften=true;
   }catch(e){} }
   var dm=OVERRIDE_CORE.trim(readFile(ROOT+"\\session.deadlinems"));
   if(dm){ var v=parseInt(dm,10); if(!isNaN(v)) deadlineMs=v; }
 
   OVERRIDE_UI.init({
     label: label, numQuestions: n, difficulty: diff, cats: cats,
-    matrixRain: rain, deadlineMs: deadlineMs, theme: theme, user: user,
+    matrixRain: rain, deadlineMs: deadlineMs, theme: theme, user: user, soften: soften,
+    setVolume: function(lvl){ try{ var f=fso().CreateTextFile(ROOT+"\\session.vol",true); f.Write(String(lvl)); f.Close(); }catch(e){} },
     speak: speakSapi,
     unlock: function(){
       try{ var f=fso().CreateTextFile(ROOT+"\\UNLOCK",true); f.Write(KEY); f.Close(); }catch(e){}
