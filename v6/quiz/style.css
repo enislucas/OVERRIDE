@@ -1,5 +1,5 @@
 /* OVERRIDE v4 // themed quiz stylesheet
-   One file, four themes: html.t-green / .t-red / .t-cyber / .t-boring
+   Five themes: html.t-green / .t-red / .t-cyber / .t-1890 / .t-boring
    Rules: no CSS variables (mshta fallback must render), explicit colors per theme.
    Ambient layers are static (free); animations are short bursts or tiny elements.
    Modern extras (clip-path slicing) live inside @supports so IE degrades gracefully. */
@@ -174,35 +174,68 @@ input#ans{font-size:26px;width:420px;padding:9px 12px;border-radius:8px;outline:
 .t-cyber #stats{color:#3d7d8a;}
 .t-cyber #stamp{color:#f0f;text-shadow:0 0 12px rgba(255,0,255,.8);}
 
-/* ================= THEME: boring (The Boring Company: black / white, clean, no neon) ================= */
-.t-boring body,.t-boring #ended{color:#e9e9ec;font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;}
-.t-boring #vignette{background:radial-gradient(ellipse at center,rgba(255,255,255,.02) 0%,rgba(0,0,0,0) 55%,rgba(0,0,0,.6) 100%);}
+/* ================= THEME: 1890 (stark black / white, clean, no neon) ================= */
+.t-1890 body,.t-1890 #ended{color:#e9e9ec;font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;}
+.t-1890 #vignette{background:radial-gradient(ellipse at center,rgba(255,255,255,.02) 0%,rgba(0,0,0,0) 55%,rgba(0,0,0,.6) 100%);}
+.t-1890 #scan{background:none;}
+.t-1890 #flash.on{background:rgba(255,255,255,.06);}
+.t-1890 #panel{background:#0d0d0f;border:1px solid #34343a;border-radius:6px;box-shadow:0 12px 48px rgba(0,0,0,.6);}
+.t-1890 #topbar{border-bottom:1px solid #2a2a30;background:rgba(255,255,255,.03);border-radius:6px 6px 0 0;letter-spacing:2px;}
+.t-1890 .brand{color:#a9a9b0;}
+.t-1890 #clock{color:#e9e9ec;}
+.t-1890 #clock.low{color:#e06c6c;}
+.t-1890 h1{color:#f4f4f6;text-shadow:none;letter-spacing:0;}
+.t-1890 .sub{color:#9a9aa2;}
+.t-1890 #prog{color:#74747c;}
+.t-1890 .dot{background:#1e1e22;border-color:#45454d;border-radius:4px;}
+.t-1890 .dot.on{background:#e9e9ec;box-shadow:none;}
+.t-1890 .dot.cur{border-color:#bcbcc4;}
+.t-1890 .cat{color:#74747c;letter-spacing:2px;}
+.t-1890 #qtext{color:#f0f0f2;text-shadow:none;}
+.t-1890 input#ans,.t-1890 #go{font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;}
+.t-1890 input#ans{background:#111114;color:#f0f0f2;border-color:#45454d;border-radius:4px;text-shadow:none;}
+.t-1890 input#ans:focus{border-color:#c9c9d0;box-shadow:none;}
+.t-1890 input#ans.ok{border-color:#dcdce0;box-shadow:none;}
+.t-1890 input#ans.bad{border-color:#e06c6c;box-shadow:none;}
+.t-1890 #go{background:#1a1a1e;color:#e9e9ec;border-color:#45454d;border-radius:4px;text-shadow:none;letter-spacing:1px;}
+.t-1890 #go:hover{background:#e9e9ec;color:#0d0d0f;}
+.t-1890 #hint{color:#6a6a72;}
+.t-1890 .bad{color:#e06c6c;text-shadow:none;}
+.t-1890 .good{color:#dcdce0;text-shadow:none;}
+.t-1890 #done h1{color:#f4f4f6;}
+.t-1890 #quote{color:#d8d8dc;}
+.t-1890 #stats{color:#74747c;}
+.t-1890 #stamp{color:#e9e9ec;letter-spacing:3px;}
+
+/* ================= THEME: boring (Himmah / Boring Company: deep navy, cool blue, clean) ================= */
+.t-boring body,.t-boring #ended{color:#e8ebf2;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+.t-boring #vignette{background:radial-gradient(ellipse at center,rgba(74,143,255,.06) 0%,rgba(0,0,0,0) 55%,rgba(0,0,0,.75) 100%);}
 .t-boring #scan{background:none;}
-.t-boring #flash.on{background:rgba(255,255,255,.06);}
-.t-boring #panel{background:#0d0d0f;border:1px solid #34343a;border-radius:6px;box-shadow:0 12px 48px rgba(0,0,0,.6);}
-.t-boring #topbar{border-bottom:1px solid #2a2a30;background:rgba(255,255,255,.03);border-radius:6px 6px 0 0;letter-spacing:2px;}
-.t-boring .brand{color:#a9a9b0;}
-.t-boring #clock{color:#e9e9ec;}
-.t-boring #clock.low{color:#e06c6c;}
-.t-boring h1{color:#f4f4f6;text-shadow:none;letter-spacing:0;}
-.t-boring .sub{color:#9a9aa2;}
-.t-boring #prog{color:#74747c;}
-.t-boring .dot{background:#1e1e22;border-color:#45454d;border-radius:4px;}
-.t-boring .dot.on{background:#e9e9ec;box-shadow:none;}
-.t-boring .dot.cur{border-color:#bcbcc4;}
-.t-boring .cat{color:#74747c;letter-spacing:2px;}
-.t-boring #qtext{color:#f0f0f2;text-shadow:none;}
-.t-boring input#ans,.t-boring #go{font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;}
-.t-boring input#ans{background:#111114;color:#f0f0f2;border-color:#45454d;border-radius:4px;text-shadow:none;}
-.t-boring input#ans:focus{border-color:#c9c9d0;box-shadow:none;}
-.t-boring input#ans.ok{border-color:#dcdce0;box-shadow:none;}
-.t-boring input#ans.bad{border-color:#e06c6c;box-shadow:none;}
-.t-boring #go{background:#1a1a1e;color:#e9e9ec;border-color:#45454d;border-radius:4px;text-shadow:none;letter-spacing:1px;}
-.t-boring #go:hover{background:#e9e9ec;color:#0d0d0f;}
-.t-boring #hint{color:#6a6a72;}
-.t-boring .bad{color:#e06c6c;text-shadow:none;}
-.t-boring .good{color:#dcdce0;text-shadow:none;}
-.t-boring #done h1{color:#f4f4f6;}
-.t-boring #quote{color:#d8d8dc;}
-.t-boring #stats{color:#74747c;}
-.t-boring #stamp{color:#e9e9ec;letter-spacing:3px;}
+.t-boring #flash.on{background:rgba(255,107,107,.12);}
+.t-boring #panel{background:linear-gradient(#07090f,#0c1018);border:1px solid rgba(74,143,255,.22);border-radius:14px;box-shadow:0 16px 60px rgba(0,0,0,.6),0 0 0 1px rgba(176,107,255,.06);}
+.t-boring #topbar{border-bottom:1px solid #1b2230;background:rgba(74,143,255,.05);border-radius:14px 14px 0 0;letter-spacing:2px;}
+.t-boring .brand{color:#8b93a3;}
+.t-boring #clock{color:#e8ebf2;}
+.t-boring #clock.low{color:#ff6b6b;}
+.t-boring h1{color:#e8ebf2;text-shadow:none;letter-spacing:0;}
+.t-boring .sub{color:#8b93a3;}
+.t-boring #prog{color:#5a6373;}
+.t-boring .dot{background:#0c1018;border-color:#243049;border-radius:5px;}
+.t-boring .dot.on{background:#4a8fff;box-shadow:0 0 10px rgba(74,143,255,.55);}
+.t-boring .dot.cur{border-color:#7cd0f5;}
+.t-boring .cat{color:#7cd0f5;letter-spacing:2px;}
+.t-boring #qtext{color:#eef2fb;text-shadow:none;}
+.t-boring input#ans,.t-boring #go{font-family:Inter,system-ui,"Segoe UI",Roboto,sans-serif;}
+.t-boring input#ans{background:#0c1018;color:#eef2fb;border-color:#243049;border-radius:8px;text-shadow:none;}
+.t-boring input#ans:focus{border-color:#4a8fff;box-shadow:0 0 14px rgba(74,143,255,.4);}
+.t-boring input#ans.ok{border-color:#7cd99e;box-shadow:0 0 14px rgba(124,217,158,.4);}
+.t-boring input#ans.bad{border-color:#ff6b6b;box-shadow:0 0 14px rgba(255,107,107,.4);}
+.t-boring #go{background:rgba(74,143,255,.12);color:#cfe0ff;border-color:rgba(74,143,255,.5);border-radius:8px;text-shadow:none;letter-spacing:1px;}
+.t-boring #go:hover{background:#4a8fff;color:#04060a;}
+.t-boring #hint{color:#5a6373;}
+.t-boring .bad{color:#ff6b6b;text-shadow:none;}
+.t-boring .good{color:#7cd99e;text-shadow:none;}
+.t-boring #done h1{color:#e8ebf2;}
+.t-boring #quote{color:#c9d3e6;}
+.t-boring #stats{color:#8b93a3;}
+.t-boring #stamp{color:#7cd0f5;letter-spacing:3px;}

@@ -4,7 +4,7 @@
    No arrow functions, no let/const, no template literals.
 
    v4 adds on top of v3 (generators are IDENTICAL — 14,400-question selftested):
-   - theme system: env.theme = green | red | cyber | boring   (html gets class t-<theme>)
+   - theme system: env.theme = green | red | cyber | 1890 | boring   (html gets class t-<theme>)
    - effects: matrix rain (theme-coloured), RGB-split glitch burst on wrong,
      red screen flash on wrong, CJK-scramble "chinese vanish" on solve,
      CRT overlay (pure CSS, free), decrypt reveal + shake kept from v3
@@ -412,12 +412,14 @@ var OVERRIDE_UI = (function () {
   var C = OVERRIDE_CORE;
   var env = null, Q = null, N = 3, solved = 0, wrongs = 0;
   var lastSpoke = 0, revealTimer = null, started = null, finished = false;
-  // v6.6 decreasing-sound: each correct answer drops the alarm volume a step (floor VOL_FLOOR);
-  // stalling > VOL_RESET_MS on a question snaps it back to 100. The ring does the actual volume
-  // change; we just tell it the target via env.setVolume(level) when env.soften is on.
-  var volLevel = 100, qTimer = null, VOL_STEP = 8, VOL_FLOOR = 20, VOL_RESET_MS = 30000;
-  var THEMES = { green: 1, red: 1, cyber: 1, boring: 1 };
-  var RAIN_COLORS = { green: ["#00ff66"], red: ["#ff2233", "#ff6b75"], cyber: ["#00ffff", "#ff00ff"], boring: ["#c8c8cc", "#8a8a90"] };
+  // v6.6/6.7 decreasing-sound: volume follows the # of consecutive correct answers (volStep):
+  // 1st -> 50, 2nd -> 40, then -VOL_STEP(4) each down to VOL_FLOOR(20). Stalling > VOL_RESET_MS on
+  // a question snaps it back to 100 AND resets volStep (you lose the quiet progress). The ring does
+  // the actual volume change; we just tell it the target via env.setVolume(level) when env.soften is on.
+  var volLevel = 100, volStep = 0, qTimer = null;
+  var VOL_FIRST = 50, VOL_SECOND = 40, VOL_STEP = 4, VOL_FLOOR = 20, VOL_RESET_MS = 30000;
+  var THEMES = { green: 1, red: 1, cyber: 1, 1890: 1, boring: 1 };
+  var RAIN_COLORS = { green: ["#00ff66"], red: ["#ff2233", "#ff6b75"], cyber: ["#00ffff", "#ff00ff"], "1890": ["#c8c8cc", "#8a8a90"], boring: ["#4a8fff", "#7cd0f5"] };
 
   function el(id) { return document.getElementById(id); }
   function cjkChar() { return String.fromCharCode(0x4E00 + C.rnd(0, 0x4DBF)); }
@@ -458,9 +460,16 @@ var OVERRIDE_UI = (function () {
 
   /* ---- decreasing-sound (v6.6): tell the ring the current volume target ---- */
   function sendVol() { try { if (env && env.setVolume) env.setVolume(volLevel); } catch (e) { } }
+  function volForStep(step) {
+    if (step <= 0) return 100;
+    if (step === 1) return VOL_FIRST;                 // 1st correct -> 50
+    if (step === 2) return VOL_SECOND;                // 2nd correct -> 40
+    var v = VOL_SECOND - (step - 2) * VOL_STEP;       // then -4 each: 36, 32, 28, 24...
+    return v < VOL_FLOOR ? VOL_FLOOR : v;             // floor 20
+  }
   function armQTimer() {
     if (qTimer) { clearTimeout(qTimer); qTimer = null; }
-    if (env && env.soften) { qTimer = setTimeout(function () { volLevel = 100; sendVol(); }, VOL_RESET_MS); }
+    if (env && env.soften) { qTimer = setTimeout(function () { volLevel = 100; volStep = 0; sendVol(); }, VOL_RESET_MS); }
   }
 
   function showErr() {
@@ -550,7 +559,7 @@ var OVERRIDE_UI = (function () {
     if (C.isHit(Q, box.value)) {
       solved++;
       if (qTimer) { clearTimeout(qTimer); qTimer = null; }
-      if (env.soften) { volLevel = Math.max(VOL_FLOOR, volLevel - VOL_STEP); sendVol(); }   // v6.6: quieter with each correct answer
+      if (env.soften) { volStep++; volLevel = volForStep(volStep); sendVol(); }   // v6.7: 100 -> 50 -> 40 -> -4/answer -> floor 20
       box.className = "ok";
       el('msg').innerHTML = '<span class="good">&gt; VERIFIED</span>';
       if (solved >= N) { victory(); return; }
@@ -675,7 +684,7 @@ var OVERRIDE_UI = (function () {
   function init(envIn) {
     env = envIn;
     N = env.numQuestions; if (isNaN(N) || N < 1) N = 3; if (N > 50) N = 50;   // v6.6: cap raised 6 -> 50
-    volLevel = 100;
+    volLevel = 100; volStep = 0;
     if (!env.cats || env.cats.length === 0) env.cats = ["arithmetic"];
     if (!THEMES[env.theme]) env.theme = "green";
     try { document.documentElement.className = "t-" + env.theme; } catch (e) { }

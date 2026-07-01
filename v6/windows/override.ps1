@@ -16,6 +16,9 @@ param(
 # steady solving is rewarded, dozing off is not (quiz drives it via env.setVolume -> /vol beacon or
 # session.vol file -> ring [Vol]::Set(rg_volTarget)); (c) 'crt' theme replaced by 'boring' (The
 # Boring Company black/white minimal, no neon).
+# v6.7 = (a) decreasing-sound curve steeper: 1st correct -> 50, 2nd -> 40, then -4/answer to floor 20;
+# (b) that black/white theme renamed 'boring' -> '1890'; NEW 'boring' theme from the user's Himmah
+# palette (deep navy #04060a, cool blue accent #4a8fff, Inter sans).
 # v5 = frozen rollback (tag v5-stable).
 # Same architecture as v3 (scheduled tasks -> one ephemeral ring, 0 CPU between alarms),
 # plus:
@@ -38,7 +41,7 @@ $script:quizHta  = Join-Path $script:root "quiz\quiz.hta"
 $script:quizHtml = Join-Path $script:root "quiz\quiz.html"
 $script:CATS = @('arithmetic','derivatives','vectors','matrices','capitals',
                  'equations','percentages','powers','sequences','integrals','binary','elements')
-$script:THEMES = @('green','red','cyber','boring','roulette')
+$script:THEMES = @('green','red','cyber','1890','boring','roulette')
 
 function New-DefaultConfig {
   $cats = [ordered]@{}; foreach ($c in $script:CATS) { $cats[$c] = ($c -eq 'arithmetic') }
@@ -305,7 +308,7 @@ function Get-Prop($obj, [string]$name, $default) {
   return $default
 }
 function Resolve-Theme([string]$t) {
-  if ($t -eq 'roulette' -or -not $t) { return @('green','red','cyber','boring') | Get-Random }
+  if ($t -eq 'roulette' -or -not $t) { return @('green','red','cyber','1890','boring') | Get-Random }
   if ($script:THEMES -contains $t) { return $t }
   return 'green'
 }
@@ -317,7 +320,8 @@ function Get-PanelPalette([string]$theme) {
   switch ($t) {
     'red'   { @{ Accent=(C 255 60 75);  Accent2=(C 255 120 60); Dim=(C 255 175 180); Box=(C 20 1 4);  Field=(C 40 2 8);   Row=(C 36 3 9);  Glow=(C 255 40 60);  Rain=(C 255 55 70);  Scan=(C 60 0 0) } }
     'cyber' { @{ Accent=(C 60 255 255); Accent2=(C 255 70 220); Dim=(C 210 180 255); Box=(C 10 7 30); Field=(C 18 14 46); Row=(C 20 14 44); Glow=(C 255 0 230);  Rain=(C 0 255 255);  Scan=(C 0 40 50) } }
-    'boring' { @{ Accent=(C 235 235 238); Accent2=(C 175 175 182); Dim=(C 150 150 158); Box=(C 14 14 16); Field=(C 26 26 30); Row=(C 22 22 26); Glow=(C 90 90 98);  Rain=(C 200 200 208); Scan=(C 30 30 34) } }
+    '1890'  { @{ Accent=(C 235 235 238); Accent2=(C 175 175 182); Dim=(C 150 150 158); Box=(C 14 14 16); Field=(C 26 26 30); Row=(C 22 22 26); Glow=(C 90 90 98);  Rain=(C 200 200 208); Scan=(C 30 30 34) } }
+    'boring' { @{ Accent=(C 74 143 255); Accent2=(C 176 107 255); Dim=(C 139 147 163); Box=(C 4 6 10);  Field=(C 12 16 24);  Row=(C 7 9 15);  Glow=(C 74 143 255); Rain=(C 124 208 245); Scan=(C 12 16 30) } }
     default { @{ Accent=(C 0 255 120);  Accent2=(C 120 255 90);  Dim=(C 150 255 195); Box=(C 0 16 7);  Field=(C 0 32 14);  Row=(C 0 28 12); Glow=(C 0 255 120);  Rain=(C 0 255 120);  Scan=(C 0 40 18) } }
   }
 }
@@ -328,7 +332,8 @@ function Get-ComboOptionColors([string]$name) {
     'green'    { @{ A=(C 0 30 13);   B=(C 0 52 22);   Fg=(C 130 255 165) } }   # phosphor green
     'red'      { @{ A=(C 36 0 8);    B=(C 78 4 14);   Fg=(C 255 110 122) } }   # alert red
     'cyber'    { @{ A=(C 0 44 60);   B=(C 52 0 64);   Fg=(C 240 250 255) } }   # cyan -> magenta
-    'boring'   { @{ A=(C 20 20 22);  B=(C 40 40 44);  Fg=(C 235 235 238) } }   # black / white minimal
+    '1890'     { @{ A=(C 20 20 22);  B=(C 40 40 44);  Fg=(C 235 235 238) } }   # stark black / white
+    'boring'   { @{ A=(C 6 10 20);   B=(C 16 26 50);   Fg=(C 200 216 255) } }   # Himmah navy / blue
     'roulette' { @{ A=(C 12 10 28);  B=(C 44 6 44);   Fg=(C 215 210 255) } }   # mixed/lavender
     default    { @{ A=(C 0 20 9);    B=(C 0 34 16);   Fg=(C 190 230 200) } }
   }
@@ -1236,7 +1241,7 @@ function Show-PanelGui {
   $fL=New-Object System.Drawing.Font('Consolas',10); $fLb=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold)
 
   $script:pn_form = New-Object System.Windows.Forms.Form
-  $script:pn_form.Text = "OVERRIDE // CONTROL v6.6"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
+  $script:pn_form.Text = "OVERRIDE // CONTROL v6.7"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
   $script:pn_form.StartPosition = 'CenterScreen'; $script:pn_form.MinimumSize = New-Object System.Drawing.Size(1040,860)
   $script:pn_form.WindowState = 'Maximized'; $script:pn_form.BackColor = [System.Drawing.Color]::Black
   $ico = Join-Path $script:eng 'override.ico'; if (Test-Path $ico) { try { $script:pn_form.Icon = New-Object System.Drawing.Icon $ico } catch {} }
@@ -1261,10 +1266,10 @@ function Show-PanelGui {
   $script:pn_form.Controls.Add($script:pn_box); $script:pn_rain.Panel.SendToBack()
 
   $hdr = New-Object System.Windows.Forms.Label; $hdr.Text=("OVERRIDE // CONTROL   "+[char]0x03A9); $hdr.Left=18; $hdr.Top=12; $hdr.Width=680; $hdr.Height=42; $hdr.ForeColor=$script:pn_pal.Accent; $hdr.BackColor=[System.Drawing.Color]::Transparent; $hdr.Font=New-Object System.Drawing.Font('Consolas',24,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($hdr)
-  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v6.6"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
+  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v6.7"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
   # APP THEME — skins THIS control panel (separate from each alarm's own ALARM THEME). Live re-skin.
   $appLbl = New-Object System.Windows.Forms.Label; $appLbl.Text="APP THEME"; $appLbl.Left=600; $appLbl.Top=52; $appLbl.Width=120; $appLbl.Height=20; $appLbl.TextAlign='MiddleRight'; $appLbl.ForeColor=$script:pn_pal.Accent2; $appLbl.BackColor=[System.Drawing.Color]::Transparent; $appLbl.Font=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($appLbl)
-  $script:pn_appTheme = New-ThemeCombo; $script:pn_appTheme.Left=728; $script:pn_appTheme.Top=49; $script:pn_appTheme.Width=130; $script:pn_appTheme.Items.AddRange(@('green','red','cyber','boring')); $script:pn_appTheme.Font=$fLb; Style-ThemeCombo $script:pn_appTheme $script:pn_pal
+  $script:pn_appTheme = New-ThemeCombo; $script:pn_appTheme.Left=728; $script:pn_appTheme.Top=49; $script:pn_appTheme.Width=130; $script:pn_appTheme.Items.AddRange(@('green','red','cyber','1890','boring')); $script:pn_appTheme.Font=$fLb; Style-ThemeCombo $script:pn_appTheme $script:pn_pal
   $script:pn_appTheme.SelectedItem = $script:pn_theme
   $script:pn_appTheme.Add_SelectedIndexChanged({
     $sel = [string]$script:pn_appTheme.SelectedItem
@@ -1350,7 +1355,7 @@ function Show-PanelGui {
   $r2b = 416
   (NewLbl "ALARM THEME" 24 ($r2b+4) 110 $false) | Out-Null
   $script:pn_eTheme = New-ThemeCombo; $script:pn_eTheme.Left=140; $script:pn_eTheme.Top=$r2b; $script:pn_eTheme.Width=140; $script:pn_eTheme.Font=$fL; $script:pn_eTheme.Items.AddRange($script:THEMES); Style-ThemeCombo $script:pn_eTheme $script:pn_pal; $script:pn_box.Controls.Add($script:pn_eTheme)
-  (NewLbl "ring look ( green / red / cyber / boring;  roulette = random )" 294 ($r2b+5) 440 $true) | Out-Null
+  (NewLbl "ring look ( green / red / cyber / 1890 / boring;  roulette = random )" 294 ($r2b+5) 444 $true) | Out-Null
   $script:pn_eSoften = New-Object System.Windows.Forms.CheckBox; $script:pn_eSoften.Text="decreasing sound"; $script:pn_eSoften.Left=744; $script:pn_eSoften.Top=($r2b+2); $script:pn_eSoften.Width=230; $script:pn_eSoften.ForeColor=$dim; $script:pn_eSoften.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eSoften.Font=$fL; $script:pn_box.Controls.Add($script:pn_eSoften); Style-Check $script:pn_eSoften $script:pn_pal
   $script:pn_tip.SetToolTip($script:pn_eSoften, "Each correct answer lowers the alarm volume a little (down to a floor).`r`nStall over 30s on a question and it snaps back to 100% - steady solving is rewarded, dozing off is not.")
 
