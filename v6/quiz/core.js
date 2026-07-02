@@ -424,17 +424,18 @@ var OVERRIDE_UI = (function () {
   function el(id) { return document.getElementById(id); }
   function cjkChar() { return String.fromCharCode(0x4E00 + C.rnd(0, 0x4DBF)); }
 
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function buildDom() {
     var i, dots = "", nd = (N <= 12) ? N : 0;   // v6.6: skip the dot row for large N; the "VERIFIED x / N" text carries it
     for (i = 0; i < nd; i++) dots += '<span class="dot" id="dot' + i + '"></span>';
     var h =
       '<canvas id="rain"></canvas><div id="vignette"></div><div id="scan"></div><div id="flash"></div>' +
       '<div id="crtwrap"><div id="stage"><div id="panel">' +
-      '<div id="topbar"><span id="clock"></span><span class="brand">OVERRIDE // WAKE PROTOCOL &nbsp;[ ' + env.label + ' ]</span></div>' +
+      '<div id="topbar"><span id="clock"></span><span class="brand">OVERRIDE // WAKE PROTOCOL &nbsp;[ ' + esc(env.label) + ' ]</span></div>' +
       '<div id="body"><div id="quiz">' +
       '<h1 id="title">IDENTITY VERIFICATION</h1>' +
       '<div class="sub" id="subline">Answer each question to prove consciousness and disable the alarm' +
-      (env.user ? ', <b>' + env.user + '</b>' : '') + '.<span class="blink">_</span></div>' +
+      (env.user ? ', <b>' + esc(env.user) + '</b>' : '') + '.<span class="blink">_</span></div>' +
       '<div id="prog">' + dots + ' &nbsp; <span id="progtxt"></span></div>' +
       '<div class="cat" id="qcat"></div>' +
       '<div id="qtext"></div>' +

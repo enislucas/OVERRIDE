@@ -24,6 +24,7 @@
 (function () {
   'use strict';
   var C = OVERRIDE_CORE;
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
   /* ------------------------ platform + version ------------------------ */
   var APPV = (function () {
@@ -120,7 +121,7 @@
 
   /* ------------------------------ state ------------------------------- */
   var state = 'setup';        // setup | armed | ringing | solved
-  var targetMs = 0, nextAlarm = null, ringing = null;   // ringing = the alarm being rung
+  var targetMs = 0, nextAlarm = null, ringing = null, dues = {};   // ringing = alarm being rung; dues = per-alarm next-fire ms (transient)
   var pollTimer = null, nagTimer = null, lastSpoke = 0;
   var editId = null;          // alarm id open in the editor overlay (null = none)
 
@@ -292,16 +293,25 @@
     if (t.getTime() <= now.getTime()) t.setDate(t.getDate() + 1);
     return t.getTime();
   }
-  function computeNext() {   // earliest next occurrence across enabled alarms
-    var best = null, bestT = 0, i, a, t;
+  function scheduleAll() {   // stamp each enabled alarm's next fire time (transient; recomputed at arm)
+    dues = {};
+    for (var i = 0; i < cfg.alarms.length; i++) { var a = cfg.alarms[i]; if (a.enabled) dues[a.id] = nextOccurrence(a.time); }
+  }
+  function soonest() {       // {alarm,t} of the earliest-due enabled alarm (also sets nextAlarm/targetMs), or null
+    var best = null, bt = 0, i, a, t;
     for (i = 0; i < cfg.alarms.length; i++) {
-      a = cfg.alarms[i];
-      if (!a.enabled) continue;
-      t = nextOccurrence(a.time);
-      if (!best || t < bestT) { best = a; bestT = t; }
+      a = cfg.alarms[i]; if (!a.enabled) continue;
+      t = dues[a.id]; if (t == null) { t = nextOccurrence(a.time); dues[a.id] = t; }
+      if (!best || t < bt) { best = a; bt = t; }
     }
-    nextAlarm = best; targetMs = best ? bestT : 0;
-    return best;
+    if (!best) { nextAlarm = null; targetMs = 0; return null; }
+    nextAlarm = best; targetMs = bt; return { alarm: best, t: bt };
+  }
+  function dueNow(now) {      // an enabled alarm whose stored due time has already passed, or null.
+    // Uses the STORED due (not a fresh nextOccurrence) so an alarm whose time passed while another
+    // was being solved still fires, and two alarms at the same minute both fire (one, then the next).
+    for (var i = 0; i < cfg.alarms.length; i++) { var a = cfg.alarms[i]; if (a.enabled && dues[a.id] != null && dues[a.id] <= now) return a; }
+    return null;
   }
   function catsArray(a) {
     var out = [], k; for (k in a.cats) { if (a.cats[k]) out.push(k); }
@@ -316,7 +326,8 @@
   }
 
   function arm() {
-    if (!computeNext()) { dlog('ARM refused: no enabled alarms'); return; }
+    scheduleAll();
+    if (!soonest()) { dlog('ARM refused: no enabled alarms'); return; }
     primeAudio();
     acquireWake();
     state = 'armed'; lastTickT = 0;
@@ -341,9 +352,10 @@
     lastTickT = now;
     if (wakeWanted && !wakeLock && document.visibilityState === 'visible') acquireWake();
     if (state !== 'armed') return;
-    if (!nextAlarm) { if (!computeNext()) { disarm(); return; } }
+    var due = dueNow(now);
+    if (due) { var late = now - dues[due.id]; dlog('FIRE "' + due.label + '"' + (late > 2000 ? ' LATE by ' + Math.round(late / 1000) + 's (page had been asleep)' : '')); fire(due); return; }
+    if (!soonest()) { disarm(); return; }   // all alarms got disabled -> back to setup
     var left = targetMs - now;
-    if (left <= 0) { dlog('FIRE "' + (nextAlarm ? nextAlarm.label : '?') + '"' + (left < -2000 ? ' LATE by ' + Math.round(-left / 1000) + 's (page had been asleep)' : '')); fire(nextAlarm); return; }
     var n = document.getElementById('cdNum'); if (n) n.textContent = fmtLeft(left);
     var hb = document.getElementById('cdHb'); if (hb) hb.innerHTML = beat() + ' live &nbsp;·&nbsp; screen-lock: ' + wakeStatusText();
   }
@@ -389,8 +401,11 @@
     state = 'solved';
     stopAlarm(); stopNag();
     softLevel = 100;
-    if (ringing && !ringing.repeat) { ringing.enabled = false; saveCfg(); }  // one-time alarms disable themselves
-    if (computeNext()) {
+    if (ringing) {
+      if (ringing.repeat) { dues[ringing.id] = nextOccurrence(ringing.time); }   // this one -> tomorrow
+      else { ringing.enabled = false; delete dues[ringing.id]; saveCfg(); }        // one-time -> off
+    }
+    if (soonest()) {   // another alarm may already be due (both fired this minute) -> tick fires it next
       state = 'armed';
       if (pollTimer) clearInterval(pollTimer);
       pollTimer = setInterval(tick, 250);
@@ -484,7 +499,7 @@
     cfg.alarms.forEach(function (a) {
       var row = document.createElement('div'); row.className = 'alarm-row' + (a.enabled ? '' : ' off');
       var left = document.createElement('div'); left.className = 'ar-left';
-      left.innerHTML = '<div class="ar-time">' + a.time + '</div><div class="ar-lbl">' + (a.label || 'WAKE UP') + '</div><div class="ar-sum">' + summary(a) + '</div>';
+      left.innerHTML = '<div class="ar-time">' + esc(a.time) + '</div><div class="ar-lbl">' + esc(a.label || 'WAKE UP') + '</div><div class="ar-sum">' + summary(a) + '</div>';
       left.addEventListener('click', function () { editId = a.id; renderSetup(); });
       var right = document.createElement('div'); right.className = 'ar-right';
       var tgl = document.createElement('div'); tgl.className = 'chip' + (a.enabled ? ' on' : ''); tgl.textContent = a.enabled ? 'ON' : 'OFF';
@@ -508,7 +523,7 @@
     var ed = editId ? alarmById(editId) : null;
     if (ed) {
       var c2 = document.createElement('div'); c2.className = 'card';
-      c2.innerHTML = '<h2>EDIT · ' + ed.time + '</h2>';
+      c2.innerHTML = '<h2>EDIT · ' + esc(ed.time) + '</h2>';
       var trow = document.createElement('div'); trow.className = 'timewrap';
       var tin = document.createElement('input'); tin.type = 'time'; tin.value = ed.time;
       tin.addEventListener('change', function (e) { ed.time = e.target.value || ed.time; saveCfg(); });
@@ -591,9 +606,9 @@
   function renderArmed() {
     var r = root(); r.innerHTML = '';
     var cd = document.createElement('div'); cd.className = 'cd';
-    var when = nextAlarm ? (nextAlarm.time + ' · ' + (nextAlarm.label || 'WAKE UP')) : '--';
+    var when = nextAlarm ? (esc(nextAlarm.time) + ' · ' + esc(nextAlarm.label || 'WAKE UP')) : '--';
     var upcoming = cfg.alarms.filter(function (a) { return a.enabled; })
-      .map(function (a) { return a.time + ' ' + (a.label || ''); }).join('&nbsp;&nbsp;|&nbsp;&nbsp;');
+      .map(function (a) { return esc(a.time) + ' ' + esc(a.label || ''); }).join('&nbsp;&nbsp;|&nbsp;&nbsp;');
     cd.innerHTML =
       '<div class="lbl">ARMED · ' + PNAME + '</div>' +
       '<div class="time">next: ' + when + '</div>' +
