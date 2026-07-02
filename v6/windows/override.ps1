@@ -19,6 +19,10 @@ param(
 # v6.7 = (a) decreasing-sound curve steeper: 1st correct -> 50, 2nd -> 40, then -4/answer to floor 20;
 # (b) that black/white theme renamed 'boring' -> '1890'; NEW 'boring' theme from the user's Himmah
 # palette (deep navy #04060a, cool blue accent #4a8fff, Inter sans).
+# v6.8 = (a) BUG: soften alarm stuck at low volume after a quiz crash+relaunch -> Launch-Quiz resets
+# rg_volTarget=100 each (re)launch; (b) DESIGN: panel now themes correctly on all palettes -- buttons,
+# row up/down/EDIT, hint/status/row labels used hardcoded green; now palette Field/Accent/Dim +
+# flat accent borders + hover; section headers (ALARMS / EDIT-ADD) use Accent2 for hierarchy.
 # v5 = frozen rollback (tag v5-stable).
 # Same architecture as v3 (scheduled tasks -> one ephemeral ring, 0 CPU between alarms),
 # plus:
@@ -610,6 +614,11 @@ function Get-QuizUrl {
 }
 function Launch-Quiz {
   $script:rg_proc = $null
+  # decreasing-sound (v6.8): every (re)launch restores full volume until the fresh quiz drives it
+  # down again. Without this, a quiz that crashed at a low softened level would leave the ring
+  # forcing that low volume (as low as 20%) until the new quiz's first answer or 30s reset -- a
+  # quiet alarm that can be slept through. Run-Ring sets it =100 initially; this covers relaunches.
+  if ($script:rg_soften) { $script:rg_volTarget = 100 }
   # launch-grace anchor: NEVER re-evaluate "is the quiz alive / should I relaunch" for the next
   # rg_launchGrace seconds. This is the fix for the relaunch-thrash bug (bug museum #17): mshta
   # and Edge both hand off to a different process, so the launched PID's HasExited lies almost
@@ -1058,14 +1067,14 @@ function Panel-RenderRows {
     $lt = New-Object System.Windows.Forms.Label; $lt.Text=$al.Time; $lt.Left=32; $lt.Top=8; $lt.Width=60; $lt.ForeColor=$green; $lt.Font=$script:pn_rowFonts.T
     $ll = New-Object System.Windows.Forms.Label; $ll.Text=$al.Label; $ll.Left=100; $ll.Top=9; $ll.Width=170; $ll.ForeColor=$dim; $ll.Font=$script:pn_rowFonts.N
     $when = if ($al.Rhythm) { 'daily (rhythm)' } elseif ($al.Date) { $w = Resolve-When $al.Time $al.Date $false; if ($w) { $al.Date } else { "$($al.Date) (past)" } } else { 'next' }
-    $ld = New-Object System.Windows.Forms.Label; $ld.Text=$when; $ld.Left=276; $ld.Top=9; $ld.Width=140; $ld.ForeColor=[System.Drawing.Color]::FromArgb(110,200,150); $ld.Font=$script:pn_rowFonts.N
-    $ls = New-Object System.Windows.Forms.Label; $ls.Text=("{0} x{1} [{2}] ~{3}" -f $al.Diff,$al.NumQ,(Cats-Summary $al.Cats),$al.Theme); $ls.Left=420; $ls.Top=9; $ls.Width=250; $ls.ForeColor=[System.Drawing.Color]::FromArgb(90,180,130); $ls.Font=$script:pn_rowFonts.N
+    $ld = New-Object System.Windows.Forms.Label; $ld.Text=$when; $ld.Left=276; $ld.Top=9; $ld.Width=140; $ld.ForeColor=$dim; $ld.Font=$script:pn_rowFonts.N
+    $ls = New-Object System.Windows.Forms.Label; $ls.Text=("{0} x{1} [{2}] ~{3}" -f $al.Diff,$al.NumQ,(Cats-Summary $al.Cats),$al.Theme); $ls.Left=420; $ls.Top=9; $ls.Width=250; $ls.ForeColor=[System.Drawing.Color]::FromArgb(150,$green.R,$green.G,$green.B); $ls.Font=$script:pn_rowFonts.N
     # reorder buttons (v6): move this alarm up / down in the list. Top row's up + bottom row's down are disabled.
-    $up = New-Object System.Windows.Forms.Button; $up.Text=([string][char]0x25B2); $up.Left=676; $up.Top=4; $up.Width=28; $up.Height=26; $up.Tag=$al.Id; $up.FlatStyle='Flat'; $up.ForeColor=$green; $up.BackColor=[System.Drawing.Color]::FromArgb(0,33,15); $up.Font=$script:pn_rowFonts.B; $up.Enabled=($idx -gt 0)
+    $up = New-Object System.Windows.Forms.Button; $up.Text=([string][char]0x25B2); $up.Left=676; $up.Top=4; $up.Width=28; $up.Height=26; $up.Tag=$al.Id; $up.FlatStyle='Flat'; $up.ForeColor=$green; $up.BackColor=$pal.Field; $up.FlatAppearance.BorderColor=$pal.Accent; $up.FlatAppearance.BorderSize=1; $up.Font=$script:pn_rowFonts.B; $up.Enabled=($idx -gt 0)
     $up.Add_Click({ param($s,$e) Panel-MoveAlarm $s.Tag -1 })
-    $dn = New-Object System.Windows.Forms.Button; $dn.Text=([string][char]0x25BC); $dn.Left=708; $dn.Top=4; $dn.Width=28; $dn.Height=26; $dn.Tag=$al.Id; $dn.FlatStyle='Flat'; $dn.ForeColor=$green; $dn.BackColor=[System.Drawing.Color]::FromArgb(0,33,15); $dn.Font=$script:pn_rowFonts.B; $dn.Enabled=($idx -lt ($count-1))
+    $dn = New-Object System.Windows.Forms.Button; $dn.Text=([string][char]0x25BC); $dn.Left=708; $dn.Top=4; $dn.Width=28; $dn.Height=26; $dn.Tag=$al.Id; $dn.FlatStyle='Flat'; $dn.ForeColor=$green; $dn.BackColor=$pal.Field; $dn.FlatAppearance.BorderColor=$pal.Accent; $dn.FlatAppearance.BorderSize=1; $dn.Font=$script:pn_rowFonts.B; $dn.Enabled=($idx -lt ($count-1))
     $dn.Add_Click({ param($s,$e) Panel-MoveAlarm $s.Tag 1 })
-    $ed = New-Object System.Windows.Forms.Button; $ed.Text='EDIT'; $ed.Left=766; $ed.Top=4; $ed.Width=74; $ed.Height=26; $ed.Tag=$al.Id; $ed.FlatStyle='Flat'; $ed.ForeColor=$green; $ed.BackColor=[System.Drawing.Color]::FromArgb(0,33,15); $ed.Font=$script:pn_rowFonts.B
+    $ed = New-Object System.Windows.Forms.Button; $ed.Text='EDIT'; $ed.Left=766; $ed.Top=4; $ed.Width=74; $ed.Height=26; $ed.Tag=$al.Id; $ed.FlatStyle='Flat'; $ed.ForeColor=$green; $ed.BackColor=$pal.Field; $ed.FlatAppearance.BorderColor=$pal.Accent; $ed.FlatAppearance.BorderSize=1; $ed.Font=$script:pn_rowFonts.B
     $ed.Add_Click({ param($s,$e) $a = $script:pn_alarms | Where-Object { $_.Id -eq $s.Tag } | Select-Object -First 1; if ($a) { Panel-LoadEditor $a } })
     $del = New-Object System.Windows.Forms.Button; $del.Text='DELETE'; $del.Left=846; $del.Top=4; $del.Width=82; $del.Height=26; $del.Tag=$al.Id; $del.FlatStyle='Flat'; $del.ForeColor=[System.Drawing.Color]::FromArgb(255,90,90); $del.BackColor=[System.Drawing.Color]::FromArgb(30,0,0); $del.Font=$script:pn_rowFonts.B
     $del.Add_Click({ param($s,$e) $script:pn_alarms = @($script:pn_alarms | Where-Object { $_.Id -ne $s.Tag }); if ($script:pn_editId -eq $s.Tag) { Panel-LoadEditor $null }; Panel-Persist; Panel-RenderRows; Panel-RefreshArmed; Panel-UpdateStatus; Panel-Log "deleted" })
@@ -1241,7 +1250,7 @@ function Show-PanelGui {
   $fL=New-Object System.Drawing.Font('Consolas',10); $fLb=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold)
 
   $script:pn_form = New-Object System.Windows.Forms.Form
-  $script:pn_form.Text = "OVERRIDE // CONTROL v6.7"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
+  $script:pn_form.Text = "OVERRIDE // CONTROL v6.8"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
   $script:pn_form.StartPosition = 'CenterScreen'; $script:pn_form.MinimumSize = New-Object System.Drawing.Size(1040,860)
   $script:pn_form.WindowState = 'Maximized'; $script:pn_form.BackColor = [System.Drawing.Color]::Black
   $ico = Join-Path $script:eng 'override.ico'; if (Test-Path $ico) { try { $script:pn_form.Icon = New-Object System.Drawing.Icon $ico } catch {} }
@@ -1266,7 +1275,7 @@ function Show-PanelGui {
   $script:pn_form.Controls.Add($script:pn_box); $script:pn_rain.Panel.SendToBack()
 
   $hdr = New-Object System.Windows.Forms.Label; $hdr.Text=("OVERRIDE // CONTROL   "+[char]0x03A9); $hdr.Left=18; $hdr.Top=12; $hdr.Width=680; $hdr.Height=42; $hdr.ForeColor=$script:pn_pal.Accent; $hdr.BackColor=[System.Drawing.Color]::Transparent; $hdr.Font=New-Object System.Drawing.Font('Consolas',24,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($hdr)
-  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v6.7"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
+  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v6.8"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
   # APP THEME — skins THIS control panel (separate from each alarm's own ALARM THEME). Live re-skin.
   $appLbl = New-Object System.Windows.Forms.Label; $appLbl.Text="APP THEME"; $appLbl.Left=600; $appLbl.Top=52; $appLbl.Width=120; $appLbl.Height=20; $appLbl.TextAlign='MiddleRight'; $appLbl.ForeColor=$script:pn_pal.Accent2; $appLbl.BackColor=[System.Drawing.Color]::Transparent; $appLbl.Font=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($appLbl)
   $script:pn_appTheme = New-ThemeCombo; $script:pn_appTheme.Left=728; $script:pn_appTheme.Top=49; $script:pn_appTheme.Width=130; $script:pn_appTheme.Items.AddRange(@('green','red','cyber','1890','boring')); $script:pn_appTheme.Font=$fLb; Style-ThemeCombo $script:pn_appTheme $script:pn_pal
@@ -1294,7 +1303,7 @@ function Show-PanelGui {
     } else { Panel-SaveConfig; Panel-Log "auto-burn OFF - old one-time alarms will be kept" }
   })
 
-  $lh = New-Object System.Windows.Forms.Label; $lh.Text="ALARMS"; $lh.Left=20; $lh.Top=60; $lh.Width=200; $lh.ForeColor=$dim; $lh.BackColor=[System.Drawing.Color]::Transparent; $lh.Font=$fLb; $script:pn_box.Controls.Add($lh)
+  $lh = New-Object System.Windows.Forms.Label; $lh.Text="ALARMS"; $lh.Left=20; $lh.Top=60; $lh.Width=200; $lh.ForeColor=$script:pn_pal.Accent2; $lh.BackColor=[System.Drawing.Color]::Transparent; $lh.Font=$fLb; $script:pn_box.Controls.Add($lh)
   $script:pn_list = New-Object System.Windows.Forms.Panel; $script:pn_list.Left=12; $script:pn_list.Top=84; $script:pn_list.Width=976; $script:pn_list.Height=190; $script:pn_list.BackColor=$script:pn_pal.Box; $script:pn_box.Controls.Add($script:pn_list)
   # ---- v6.3 custom themed scrollbar for the alarm list (replaces the white native bars) ----
   $script:pn_vOffset = 0; $script:pn_vMax = 0; $script:pn_sbDrag = $false
@@ -1329,10 +1338,10 @@ function Show-PanelGui {
   $script:pn_sb.Add_MouseUp({ $script:pn_sbDrag=$false })
   $script:pn_box.Controls.Add($script:pn_sb); $script:pn_sb.BringToFront()
 
-  $eh = New-Object System.Windows.Forms.Label; $eh.Text="EDIT / ADD ALARM"; $eh.Left=20; $eh.Top=286; $eh.Width=300; $eh.ForeColor=$dim; $eh.BackColor=[System.Drawing.Color]::Transparent; $eh.Font=$fLb; $script:pn_box.Controls.Add($eh)
+  $eh = New-Object System.Windows.Forms.Label; $eh.Text="EDIT / ADD ALARM"; $eh.Left=20; $eh.Top=286; $eh.Width=300; $eh.ForeColor=$script:pn_pal.Accent2; $eh.BackColor=[System.Drawing.Color]::Transparent; $eh.Font=$fLb; $script:pn_box.Controls.Add($eh)
 
   function NewTb($x,$y,$w) { $t=New-Object System.Windows.Forms.TextBox; $t.Left=$x; $t.Top=$y; $t.Width=$w; $t.BackColor=$boxBg; $t.ForeColor=$dim; $t.BorderStyle='FixedSingle'; $t.Font=New-Object System.Drawing.Font('Consolas',12); $script:pn_box.Controls.Add($t); $t }
-  function NewLbl($txt,$x,$y,$w,$small) { $l=New-Object System.Windows.Forms.Label; $l.Text=$txt; $l.Left=$x; $l.Top=$y; $l.Width=$w; $l.ForeColor=$(if($small) { [System.Drawing.Color]::FromArgb(80,150,110) } else { $dim }); $l.BackColor=[System.Drawing.Color]::Transparent; $l.Font=$(if($small) { New-Object System.Drawing.Font('Consolas',8) } else { $fL }); $script:pn_box.Controls.Add($l); $l }
+  function NewLbl($txt,$x,$y,$w,$small) { $l=New-Object System.Windows.Forms.Label; $l.Text=$txt; $l.Left=$x; $l.Top=$y; $l.Width=$w; $l.ForeColor=$(if($small) { [System.Drawing.Color]::FromArgb(150,$script:pn_pal.Dim.R,$script:pn_pal.Dim.G,$script:pn_pal.Dim.B) } else { $dim }); $l.BackColor=[System.Drawing.Color]::Transparent; $l.Font=$(if($small) { New-Object System.Drawing.Font('Consolas',8) } else { $fL }); $script:pn_box.Controls.Add($l); $l }
 
   $r1 = 318
   $script:pn_eTime = NewTb 24 $r1 80;   (NewLbl "HH:MM" 24 ($r1+26) 80 $true) | Out-Null
@@ -1372,21 +1381,21 @@ function Show-PanelGui {
   }
 
   $r4 = 560
-  $script:pn_saveBtn = New-Object System.Windows.Forms.Button; $script:pn_saveBtn.Text='DEPLOY ALARM'; $script:pn_saveBtn.Left=24; $script:pn_saveBtn.Top=$r4; $script:pn_saveBtn.Width=200; $script:pn_saveBtn.Height=36; $script:pn_saveBtn.FlatStyle='Flat'; $script:pn_saveBtn.ForeColor=$green; $script:pn_saveBtn.BackColor=[System.Drawing.Color]::FromArgb(0,33,15); $script:pn_saveBtn.Font=$fLb; $script:pn_saveBtn.Add_Click({ Panel-SaveAlarm }); $script:pn_box.Controls.Add($script:pn_saveBtn)
-  $newBtn = New-Object System.Windows.Forms.Button; $newBtn.Text='NEW / CLEAR'; $newBtn.Left=234; $newBtn.Top=$r4; $newBtn.Width=140; $newBtn.Height=36; $newBtn.FlatStyle='Flat'; $newBtn.ForeColor=$dim; $newBtn.BackColor=[System.Drawing.Color]::FromArgb(0,24,11); $newBtn.Font=$fL; $newBtn.Add_Click({ Panel-LoadEditor $null; Panel-Log "editor cleared" }); $script:pn_box.Controls.Add($newBtn)
+  $script:pn_saveBtn = New-Object System.Windows.Forms.Button; $script:pn_saveBtn.Text='DEPLOY ALARM'; $script:pn_saveBtn.Left=24; $script:pn_saveBtn.Top=$r4; $script:pn_saveBtn.Width=200; $script:pn_saveBtn.Height=36; $script:pn_saveBtn.FlatStyle='Flat'; $script:pn_saveBtn.ForeColor=$green; $script:pn_saveBtn.BackColor=$script:pn_pal.Field; $script:pn_saveBtn.FlatAppearance.BorderColor=$script:pn_pal.Accent; $script:pn_saveBtn.FlatAppearance.BorderSize=2; $script:pn_saveBtn.FlatAppearance.MouseOverBackColor=$script:pn_pal.Row; $script:pn_saveBtn.Font=$fLb; $script:pn_saveBtn.Add_Click({ Panel-SaveAlarm }); $script:pn_box.Controls.Add($script:pn_saveBtn)
+  $newBtn = New-Object System.Windows.Forms.Button; $newBtn.Text='NEW / CLEAR'; $newBtn.Left=234; $newBtn.Top=$r4; $newBtn.Width=140; $newBtn.Height=36; $newBtn.FlatStyle='Flat'; $newBtn.ForeColor=$dim; $newBtn.BackColor=$script:pn_pal.Row; $newBtn.FlatAppearance.BorderColor=$script:pn_pal.Dim; $newBtn.FlatAppearance.BorderSize=1; $newBtn.FlatAppearance.MouseOverBackColor=$script:pn_pal.Field; $newBtn.Font=$fL; $newBtn.Add_Click({ Panel-LoadEditor $null; Panel-Log "editor cleared" }); $script:pn_box.Controls.Add($newBtn)
 
   $r5 = 622
   $testBtn = New-Object System.Windows.Forms.Button; $testBtn.Text="TEST RING"; $testBtn.Left=24; $testBtn.Top=$r5; $testBtn.Width=180; $testBtn.Height=46; $script:pn_box.Controls.Add($testBtn)
   $armBtn  = New-Object System.Windows.Forms.Button; $armBtn.Text=">> RE-DEPLOY ALL"; $armBtn.Left=214; $armBtn.Top=$r5; $armBtn.Width=200; $armBtn.Height=46; $script:pn_box.Controls.Add($armBtn)
   $disBtn  = New-Object System.Windows.Forms.Button; $disBtn.Text="DISARM ALL"; $disBtn.Left=424; $disBtn.Top=$r5; $disBtn.Width=170; $disBtn.Height=46; $script:pn_box.Controls.Add($disBtn)
-  foreach ($b in @($testBtn,$armBtn,$disBtn)) { $b.FlatStyle='Flat'; $b.ForeColor=$green; $b.BackColor=[System.Drawing.Color]::FromArgb(0,33,15); $b.Font=New-Object System.Drawing.Font('Consolas',13,[System.Drawing.FontStyle]::Bold) }
+  foreach ($b in @($testBtn,$armBtn,$disBtn)) { $b.FlatStyle='Flat'; $b.ForeColor=$green; $b.BackColor=$script:pn_pal.Field; $b.FlatAppearance.BorderColor=$script:pn_pal.Accent; $b.FlatAppearance.BorderSize=1; $b.FlatAppearance.MouseOverBackColor=$script:pn_pal.Row; $b.Font=New-Object System.Drawing.Font('Consolas',13,[System.Drawing.FontStyle]::Bold) }
   $testBtn.Add_Click({ Panel-Test })
   $armBtn.Add_Click({ Panel-Deploy })
   $disBtn.Add_Click({ foreach ($al in $script:pn_alarms) { $al.Enabled = $false }; Panel-SaveConfig; Remove-Alarms; Panel-RenderRows; Panel-RefreshArmed; Panel-UpdateStatus; Panel-Log "all alarms disarmed + disabled" })
 
-  $script:pn_status = New-Object System.Windows.Forms.Label; $script:pn_status.Left=24; $script:pn_status.Top=686; $script:pn_status.Width=640; $script:pn_status.Height=24; $script:pn_status.ForeColor=[System.Drawing.Color]::FromArgb(120,220,160); $script:pn_status.BackColor=[System.Drawing.Color]::Transparent; $script:pn_status.Font=New-Object System.Drawing.Font('Consolas',12); $script:pn_box.Controls.Add($script:pn_status)
-  $script:pn_log = New-Object System.Windows.Forms.Label; $script:pn_log.Left=24; $script:pn_log.Top=714; $script:pn_log.Width=956; $script:pn_log.Height=22; $script:pn_log.ForeColor=[System.Drawing.Color]::FromArgb(90,170,120); $script:pn_log.BackColor=[System.Drawing.Color]::Transparent; $script:pn_log.Font=$fL; $script:pn_box.Controls.Add($script:pn_log)
-  $hint = New-Object System.Windows.Forms.Label; $hint.Text="Edge kiosk renderer + mshta fallback  |  4 themes + roulette  |  12 subjects per alarm  |  0% CPU between alarms"; $hint.Left=24; $hint.Top=740; $hint.Width=956; $hint.Height=20; $hint.ForeColor=[System.Drawing.Color]::FromArgb(70,130,95); $hint.BackColor=[System.Drawing.Color]::Transparent; $hint.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($hint)
+  $script:pn_status = New-Object System.Windows.Forms.Label; $script:pn_status.Left=24; $script:pn_status.Top=686; $script:pn_status.Width=640; $script:pn_status.Height=24; $script:pn_status.ForeColor=$script:pn_pal.Dim; $script:pn_status.BackColor=[System.Drawing.Color]::Transparent; $script:pn_status.Font=New-Object System.Drawing.Font('Consolas',12); $script:pn_box.Controls.Add($script:pn_status)
+  $script:pn_log = New-Object System.Windows.Forms.Label; $script:pn_log.Left=24; $script:pn_log.Top=714; $script:pn_log.Width=956; $script:pn_log.Height=22; $script:pn_log.ForeColor=[System.Drawing.Color]::FromArgb(160,$dim.R,$dim.G,$dim.B); $script:pn_log.BackColor=[System.Drawing.Color]::Transparent; $script:pn_log.Font=$fL; $script:pn_box.Controls.Add($script:pn_log)
+  $hint = New-Object System.Windows.Forms.Label; $hint.Text="Edge kiosk renderer + mshta fallback  |  5 themes + roulette  |  12 subjects per alarm  |  0% CPU between alarms"; $hint.Left=24; $hint.Top=740; $hint.Width=956; $hint.Height=20; $hint.ForeColor=[System.Drawing.Color]::FromArgb(110,$dim.R,$dim.G,$dim.B); $hint.BackColor=[System.Drawing.Color]::Transparent; $hint.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($hint)
 
   $script:pn_statusTimer = New-Object System.Windows.Forms.Timer; $script:pn_statusTimer.Interval = 1000; $script:pn_statusTimer.Add_Tick({
     Panel-UpdateStatus
