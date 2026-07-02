@@ -4,7 +4,7 @@
    No arrow functions, no let/const, no template literals.
 
    v4 adds on top of v3 (generators are IDENTICAL — 14,400-question selftested):
-   - theme system: env.theme = green | red | cyber | crt   (html gets class t-<theme>)
+   - theme system: env.theme = green | red | cyber | 1890 | boring   (html gets class t-<theme>)
    - effects: matrix rain (theme-coloured), RGB-split glitch burst on wrong,
      red screen flash on wrong, CJK-scramble "chinese vanish" on solve,
      CRT overlay (pure CSS, free), decrypt reveal + shake kept from v3
@@ -412,15 +412,24 @@ var OVERRIDE_UI = (function () {
   var C = OVERRIDE_CORE;
   var env = null, Q = null, N = 3, solved = 0, wrongs = 0;
   var lastSpoke = 0, revealTimer = null, started = null, finished = false;
-  var THEMES = { green: 1, red: 1, cyber: 1, crt: 1 };
-  var RAIN_COLORS = { green: ["#00ff66"], red: ["#ff2233", "#ff6b75"], cyber: ["#00ffff", "#ff00ff"], crt: ["#2cff8c"] };
+  // WEB DIVERGENCE: the page persists across rings (desktop spawns a fresh process per ring),
+  // so intervals must be stored + cleared in init() or they accumulate one per ring forever.
+  var rainTimer = null, engineTimer = null, clockTimer = null, closeTimer = null;
+  // v6.6/6.7 decreasing-sound: volume follows the # of consecutive correct answers (volStep):
+  // 1st -> 50, 2nd -> 40, then -VOL_STEP(4) each down to VOL_FLOOR(20). Stalling > VOL_RESET_MS on
+  // a question snaps it back to 100 AND resets volStep (you lose the quiet progress). The ring does
+  // the actual volume change; we just tell it the target via env.setVolume(level) when env.soften is on.
+  var volLevel = 100, volStep = 0, qTimer = null;
+  var VOL_FIRST = 50, VOL_SECOND = 40, VOL_STEP = 4, VOL_FLOOR = 20, VOL_RESET_MS = 30000;
+  var THEMES = { green: 1, red: 1, cyber: 1, 1890: 1, boring: 1 };
+  var RAIN_COLORS = { green: ["#00ff66"], red: ["#ff2233", "#ff6b75"], cyber: ["#00ffff", "#ff00ff"], "1890": ["#c8c8cc", "#8a8a90"], boring: ["#4a8fff", "#7cd0f5"] };
 
   function el(id) { return document.getElementById(id); }
   function cjkChar() { return String.fromCharCode(0x4E00 + C.rnd(0, 0x4DBF)); }
 
   function buildDom() {
-    var i, dots = "";
-    for (i = 0; i < N; i++) dots += '<span class="dot" id="dot' + i + '"></span>';
+    var i, dots = "", nd = (N <= 12) ? N : 0;   // v6.6: skip the dot row for large N; the "VERIFIED x / N" text carries it
+    for (i = 0; i < nd; i++) dots += '<span class="dot" id="dot' + i + '"></span>';
     var h =
       '<canvas id="rain"></canvas><div id="vignette"></div><div id="scan"></div><div id="flash"></div>' +
       '<div id="crtwrap"><div id="stage"><div id="panel">' +
@@ -450,6 +459,20 @@ var OVERRIDE_UI = (function () {
     if (!force && now - lastSpoke < 5000) return;
     lastSpoke = now;
     try { env.speak(t); } catch (e) { }
+  }
+
+  /* ---- decreasing-sound (v6.6): tell the ring the current volume target ---- */
+  function sendVol() { try { if (env && env.setVolume) env.setVolume(volLevel); } catch (e) { } }
+  function volForStep(step) {
+    if (step <= 0) return 100;
+    if (step === 1) return VOL_FIRST;                 // 1st correct -> 50
+    if (step === 2) return VOL_SECOND;                // 2nd correct -> 40
+    var v = VOL_SECOND - (step - 2) * VOL_STEP;       // then -4 each: 36, 32, 28, 24...
+    return v < VOL_FLOOR ? VOL_FLOOR : v;             // floor 20
+  }
+  function armQTimer() {
+    if (qTimer) { clearTimeout(qTimer); qTimer = null; }
+    if (env && env.soften) { qTimer = setTimeout(function () { volLevel = 100; volStep = 0; sendVol(); }, VOL_RESET_MS); }
   }
 
   function showErr() {
@@ -487,6 +510,7 @@ var OVERRIDE_UI = (function () {
     el('ans').value = ""; el('ans').className = "";
     revealText(Q.q);
     refreshProg();
+    armQTimer();                 // v6.6: start this question's 30s "answer or volume resets" window
     centerPanel();
     try { el('ans').focus(); } catch (e) { }
   }
@@ -537,6 +561,8 @@ var OVERRIDE_UI = (function () {
     var box = el('ans');
     if (C.isHit(Q, box.value)) {
       solved++;
+      if (qTimer) { clearTimeout(qTimer); qTimer = null; }
+      if (env.soften) { volStep++; volLevel = volForStep(volStep); sendVol(); }   // v6.7: 100 -> 50 -> 40 -> -4/answer -> floor 20
       box.className = "ok";
       el('msg').innerHTML = '<span class="good">&gt; VERIFIED</span>';
       if (solved >= N) { victory(); return; }
@@ -573,6 +599,7 @@ var OVERRIDE_UI = (function () {
   function victory() {
     if (finished) return;
     finished = true;
+    if (qTimer) { clearTimeout(qTimer); qTimer = null; }
     /* unlock FIRST — the ring must stop even if the fancy ending breaks (invariant) */
     try { env.unlock(); } catch (e) { }
     if (revealTimer) { clearInterval(revealTimer); revealTimer = null; }
@@ -616,7 +643,7 @@ var OVERRIDE_UI = (function () {
         }
       }, 28);
     }
-    setTimeout(function () { try { env.closeWin(); } catch (e) { } }, 9500);
+    closeTimer = setTimeout(function () { try { env.closeWin(); } catch (e) { } }, 9500);
   }
 
   function tickClock() {
@@ -645,7 +672,7 @@ var OVERRIDE_UI = (function () {
     c.width = document.body.clientWidth || 1024; c.height = document.body.clientHeight || 768;
     x = c.getContext('2d'); cols = Math.floor(c.width / fs);
     for (i = 0; i < cols; i++) drops[i] = Math.floor(Math.random() * (c.height / fs));
-    setInterval(function () {
+    rainTimer = setInterval(function () {
       x.fillStyle = "rgba(0,0,0,0.08)"; x.fillRect(0, 0, c.width, c.height);
       x.font = fs + "px monospace";
       for (var j = 0; j < drops.length; j++) {
@@ -659,14 +686,19 @@ var OVERRIDE_UI = (function () {
 
   function init(envIn) {
     env = envIn;
-    /* v7 DIVERGENCE from the desktop engine: the iPad page persists across many rings
-       (a repeating daily alarm re-init()s the SAME page), whereas the desktop spawns a
-       fresh process per ring. These run-state flags are module-level, so without this
-       reset a repeating alarm's 2nd+ firing would have finished===true and check() would
-       early-return -> the alarm could never be silenced. Reset them per ring. (v7 MAINTENANCE) */
+    /* WEB DIVERGENCE: reset ALL per-ring state — the same page re-init()s for every ring of a
+       repeating alarm. Without this, finished===true from yesterday makes check() early-return
+       and the alarm can never be silenced (found by adversarial review, v7). Also clear the
+       leak-prone intervals from the previous ring. */
     finished = false; solved = 0; wrongs = 0; lastSpoke = 0;
     if (revealTimer) { clearInterval(revealTimer); revealTimer = null; }
-    N = env.numQuestions; if (isNaN(N) || N < 1) N = 3; if (N > 6) N = 6;
+    if (qTimer) { clearTimeout(qTimer); qTimer = null; }
+    if (rainTimer) { clearInterval(rainTimer); rainTimer = null; }
+    if (engineTimer) { clearInterval(engineTimer); engineTimer = null; }
+    if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
+    if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+    N = env.numQuestions; if (isNaN(N) || N < 1) N = 3; if (N > 50) N = 50;   // v6.6: cap raised 6 -> 50
+    volLevel = 100; volStep = 0;
     if (!env.cats || env.cats.length === 0) env.cats = ["arithmetic"];
     if (!THEMES[env.theme]) env.theme = "green";
     try { document.documentElement.className = "t-" + env.theme; } catch (e) { }
@@ -682,8 +714,8 @@ var OVERRIDE_UI = (function () {
       if (k === 13) check();
     };
     if (env.matrixRain) { startRain(); }
-    if (env.deadlineMs) { tickClock(); setInterval(tickClock, 1000); }
-    setInterval(watchEngine, 1500);
+    if (env.deadlineMs) { tickClock(); clockTimer = setInterval(tickClock, 1000); }
+    engineTimer = setInterval(watchEngine, 1500);
     window.onresize = centerPanel;
     newQuestion();
     setTimeout(centerPanel, 60);

@@ -1,3 +1,15 @@
+# OVERRIDE web — quiz-gated wake alarm PWA (canonical app)
+
+> **2026-07-02 overhaul:** the v7/v8/v9 folders now serve a **byte-identical app**.
+> Platform (iPad / iPhone / Android) is detected at runtime; the version label comes
+> from the URL path. **Multiple alarms** (each with its own time/label/daily-or-once/
+> theme/difficulty/questions/subjects/decreasing-sound/rain); v6.7 engine (cap 50,
+> soften curve 100→50→40→−4→20, themes 1890 + boring); per-version localStorage with
+> migration; fixes for engine interval leaks across rings, the test-sound race, and
+> the stuck victory screen. Edit ONE folder and copy to the others (hash-verify).
+> Everything below describes the underlying single-alarm v7 design and still applies
+> to the alarm/audio/wake-lock architecture.
+
 # OVERRIDE v7 — iPad / web wake alarm (PWA)
 
 v7 is the **iOS/web port**: the same OVERRIDE quiz-gated alarm, running as a

@@ -89,3 +89,15 @@ html, body {
 
 #ovr .note { font-size: 12px; color: #8a3a40; text-align: center; margin-top: 14px; line-height: 1.6; }
 #ovr a { color: #ff6b75; }
+
+/* multi-alarm list (web overhaul) */
+#ovr .alarm-row { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; margin: 8px 0; background: rgba(255,34,51,0.05);
+  border: 1px solid rgba(255,34,51,0.25); border-radius: 10px; }
+#ovr .alarm-row.off { opacity: 0.45; }
+#ovr .ar-left { flex: 1; cursor: pointer; min-width: 0; }
+#ovr .ar-time { font-size: 30px; color: #ffd6d9; letter-spacing: 1px; line-height: 1.1; }
+#ovr .ar-lbl { font-size: 13px; color: #ff8d94; letter-spacing: 1px; }
+#ovr .ar-sum { font-size: 11px; color: #8a3a40; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#ovr .ar-right { display: flex; gap: 8px; flex: none; }
+#ovr .chip.del { color: #ff6b75; border-color: #7a1018; }
