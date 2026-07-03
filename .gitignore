@@ -11,6 +11,7 @@ v3/config.json
 v4/config.json
 v5/config.json
 v6/config.json
+v10/config.json
 
 # user-supplied audio (may be copyrighted). The built-in sounds live in sounds/
 # and can be regenerated any time with make_sounds.ps1
