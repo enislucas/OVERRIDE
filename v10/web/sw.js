@@ -2,7 +2,7 @@
    network dependency. IDENTICAL file in v7/v8/v9 (assets are scope-relative;
    cache entries are keyed by full URL so the versions never collide). The alarm
    itself runs in the foreground page — a SW cannot run a background alarm. */
-var CACHE = 'override-web-2026-07-02b';
+var CACHE = 'override-web-v10-2';
 var ASSETS = [
   './index.html', './app.js', './core.js', './style.css', './alarm.css', './phone.css',
   './silence.wav', './alarm.wav', './manifest.webmanifest', './apple-touch-icon.png',

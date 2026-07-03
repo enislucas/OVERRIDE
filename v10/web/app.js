@@ -25,6 +25,7 @@
   'use strict';
   var C = OVERRIDE_CORE;
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function qs(name) { var m = location.search.match(new RegExp('[?&]' + name + '=([^&]*)')); return m ? decodeURIComponent(m[1]) : ''; }
 
   /* ------------------------ platform + version ------------------------ */
   var APPV = (function () {
@@ -473,7 +474,12 @@
   window.addEventListener('beforeunload', function (e) {
     if (state === 'ringing' || state === 'armed') { e.preventDefault(); e.returnValue = ''; return ''; }
   });
-  document.addEventListener('touchstart', function () { if (state === 'ringing') ensureAlarm(); }, { passive: true });
+  // first interaction while ringing PRIMES audio too (gate mode fires with no prior gesture, so
+  // actx/loudEl may not exist yet - touch/click are user activations, so build them right here)
+  function wakeTheSiren() { if (state !== 'ringing') return; primeAudio(); ensureAlarm(); }
+  document.addEventListener('touchstart', wakeTheSiren, { passive: true });
+  document.addEventListener('mousedown', wakeTheSiren);
+  document.addEventListener('keydown', wakeTheSiren);
 
   /* ------------------------------- views ------------------------------ */
   function root() {
@@ -516,7 +522,7 @@
       r.appendChild(rc);
     }
     var brand = document.createElement('div'); brand.className = 'brandrow';
-    brand.innerHTML = '<div class="logo">OVERRIDE</div><div class="tag">WAKE PROTOCOL // ' + APPV + '.1 - ' + PNAME + ' (universal)</div>';
+    brand.innerHTML = '<div class="logo">OVERRIDE</div><div class="tag">WAKE PROTOCOL // ' + APPV + '.2 - ' + PNAME + ' (universal)</div>';
     r.appendChild(brand);
 
     // ---- alarm list ----
@@ -637,8 +643,27 @@
     c4.innerHTML = '<h2>BEFORE YOU SLEEP (' + PNAME + ')</h2><ul class="check">' + lis + '</ul>';
     r.appendChild(c4);
 
+    // ---- DEEP SLEEP (v10.2): closed phone / sleeping laptop ----
+    var c5 = document.createElement('div'); c5.className = 'card';
+    var gateUrl = location.origin + location.pathname + '?gate=1';
+    var ds;
+    if (PLAT === 'iphone' || PLAT === 'ipad') {
+      ds = '<li><span class="k">1.</span> <b>Clock app:</b> set a normal alarm at your wake time (rings even locked - guaranteed by iOS).</li>' +
+           '<li><span class="k">2.</span> <b>Shortcuts &gt; Automation &gt; New &gt; Alarm &gt; "When my alarm is stopped"</b> &gt; add action <b>Open URL</b>: <code style="font-size:11px;word-break:break-all">' + gateUrl + '</code> &gt; turn <b>Ask Before Running OFF</b>.</li>' +
+           '<li><span class="k">3.</span> Result: stopping the alarm force-opens OVERRIDE in <b>gate mode</b> - the quiz appears instantly and your first tap turns the siren on until you solve it.</li>';
+    } else if (PLAT === 'android') {
+      ds = '<li><span class="k">1.</span> <b>Clock app:</b> set a normal alarm at your wake time (rings even locked).</li>' +
+           '<li><span class="k">2.</span> Samsung: <b>Modes &amp; Routines &gt; Add routine &gt; If: Alarm is dismissed &gt; Then: Open link</b>: <code style="font-size:11px;word-break:break-all">' + gateUrl + '</code> (other Androids: MacroDroid/Tasker "alarm dismissed" trigger).</li>' +
+           '<li><span class="k">3.</span> Dismissing the alarm force-opens OVERRIDE in <b>gate mode</b> - quiz on screen, first tap = siren until solved.</li>';
+    } else {
+      ds = '<li><span class="k">1.</span> <b>Windows:</b> use the native engine (v10/windows) - it wakes the PC from SLEEP by itself. This page is only the fallback.</li>' +
+           '<li><span class="k">2.</span> <b>Mac/Linux:</b> v10/unix in the repo - override.sh (alarm) + wake.sh (schedules a hardware wake via pmset / rtcwake; sudo required). Supervised first run!</li>';
+    }
+    c5.innerHTML = '<h2>DEEP SLEEP - phone closed / laptop asleep</h2><ul class="check">' + ds + '</ul>';
+    r.appendChild(c5);
+
     var note = document.createElement('div'); note.className = 'note';
-    note.innerHTML = 'honest limit: a website can&#39;t lock the device - it stays loud &amp; quiz-gated, but keep it open, foreground, screen on.';
+    note.innerHTML = 'honest limit: a website can&#39;t ring a CLOSED phone by itself (physics of iOS/Android) - deep sleep = native Clock alarm wakes you, OVERRIDE gates the dismissal. Foreground mode above stays the strongest web option.';
     r.appendChild(note);
   }
 
@@ -682,5 +707,19 @@
       clearArmed();
     }
   } catch (e) {}
-  renderSetup();
+  if (qs('gate') === '1') {
+    // DEEP SLEEP GATE (v10.2): opened by an automation right after the native Clock alarm was
+    // dismissed. Fire the quiz IMMEDIATELY. Audio is gesture-locked until the first tap - the
+    // existing touchstart->ensureAlarm hook turns the siren on the moment they touch the screen.
+    var ga = null, gi;
+    for (gi = 0; gi < cfg.alarms.length; gi++) { if (cfg.alarms[gi].enabled) { ga = cfg.alarms[gi]; break; } }
+    var gsrc = ga || newAlarm();
+    missedInfo = null; resumeInfo = null;
+    dlog('GATE opened by automation (' + PLAT + ')');
+    fire({ id: 'gate', time: gsrc.time, label: 'DEEP SLEEP GATE', enabled: true, repeat: true,
+           theme: gsrc.theme, difficulty: gsrc.difficulty, numQuestions: gsrc.numQuestions,
+           soften: gsrc.soften, matrixRain: gsrc.matrixRain, cats: gsrc.cats });
+  } else {
+    renderSetup();
+  }
 })();
