@@ -242,3 +242,7 @@ input#ans{font-size:26px;width:420px;padding:9px 12px;border-radius:8px;outline:
 
 /* v10.4: live answer-interpretation preview */
 #norm{font-size:13px;margin-top:8px;min-height:18px;opacity:.8;letter-spacing:.5px;}
+
+/* v10.5: true 2x2 matrix rendering (bracket look via side borders; currentColor follows theme) */
+#qtext .mx{display:inline-table;vertical-align:middle;border-left:2px solid;border-right:2px solid;border-radius:8px;padding:2px 6px;margin:0 8px;border-collapse:collapse;}
+#qtext .mx td{padding:1px 12px;text-align:center;font-size:26px;border:none;}

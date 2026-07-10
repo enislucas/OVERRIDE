@@ -168,15 +168,18 @@ var OVERRIDE_CORE = (function () {
     return { q: "(" + (a + c) + "," + (b + e) + ") − (" + c + "," + e + ")", ans: [normVec("(" + a + "," + b + ")")], type: "vec", cat: "VECTOR", hint: HINT_VEC };
   }
 
+  function mx(a, b, c, d) {
+    return '<table class="mx"><tr><td>' + a + '</td><td>' + b + '</td></tr><tr><td>' + c + '</td><td>' + d + '</td></tr></table>';
+  }
   function genMatrix(d) {
     function M() { var lo = (d === "hard") ? -6 : 1, hi = 9; return [rnd(lo, hi), rnd(lo, hi), rnd(lo, hi), rnd(lo, hi)]; }
     var m = M(), x, r;
-    if (d === "easy") return { q: "trace  [ " + m[0] + "  " + m[1] + " | " + m[2] + "  " + m[3] + " ]", ans: [normMath("" + (m[0] + m[3]))], type: "math", cat: "MATRIX", hint: HINT_MATH };
+    if (d === "easy") return { qd: "trace " + mx(m[0], m[1], m[2], m[3]), q: "trace  [ " + m[0] + "  " + m[1] + " | " + m[2] + "  " + m[3] + " ]", ans: [normMath("" + (m[0] + m[3]))], type: "math", cat: "MATRIX", hint: HINT_MATH };
     if (d === "hard") {
       x = M(); r = [m[0] + x[0], m[1] + x[1], m[2] + x[2], m[3] + x[3]];
-      return { q: "[ " + m[0] + "  " + m[1] + " | " + m[2] + "  " + m[3] + " ]  +  [ " + x[0] + "  " + x[1] + " | " + x[2] + "  " + x[3] + " ]", ans: [normVec(r[0] + "," + r[1] + "," + r[2] + "," + r[3])], type: "vec", cat: "MATRIX (add, row by row)", hint: HINT_VEC };
+      return { qd: mx(m[0], m[1], m[2], m[3]) + " + " + mx(x[0], x[1], x[2], x[3]), q: "[ " + m[0] + "  " + m[1] + " | " + m[2] + "  " + m[3] + " ]  +  [ " + x[0] + "  " + x[1] + " | " + x[2] + "  " + x[3] + " ]", ans: [normVec(r[0] + "," + r[1] + "," + r[2] + "," + r[3])], type: "vec", cat: "MATRIX (add, row by row)", hint: HINT_VEC };
     }
-    return { q: "det  [ " + m[0] + "  " + m[1] + " | " + m[2] + "  " + m[3] + " ]", ans: [normMath("" + (m[0] * m[3] - m[1] * m[2]))], type: "math", cat: "MATRIX", hint: HINT_MATH };
+    return { qd: "det " + mx(m[0], m[1], m[2], m[3]), q: "det  [ " + m[0] + "  " + m[1] + " | " + m[2] + "  " + m[3] + " ]", ans: [normMath("" + (m[0] * m[3] - m[1] * m[2]))], type: "math", cat: "MATRIX", hint: HINT_MATH };
   }
 
   var CAP = {
@@ -512,7 +515,8 @@ var OVERRIDE_UI = (function () {
     el('hint').innerHTML = Q.hint || "";
     el('ans').value = ""; el('ans').className = "";
     try { el('norm').innerHTML = ""; } catch (e) { }
-    revealText(Q.q);
+    if (Q.qd) { if (revealTimer) { clearInterval(revealTimer); revealTimer = null; } el('qtext').innerHTML = Q.qd; glitchBurst('qtext', 320); }
+    else revealText(Q.q);
     refreshProg();
     armQTimer();                 // v6.6: start this question's 30s "answer or volume resets" window
     centerPanel();
