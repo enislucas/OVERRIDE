@@ -1251,7 +1251,7 @@ function Show-PanelGui {
   $fL=New-Object System.Drawing.Font('Consolas',10); $fLb=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold)
 
   $script:pn_form = New-Object System.Windows.Forms.Form
-  $script:pn_form.Text = "OVERRIDE // CONTROL v10.1"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
+  $script:pn_form.Text = "OVERRIDE // CONTROL v10.4"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
   $script:pn_form.StartPosition = 'CenterScreen'; $script:pn_form.MinimumSize = New-Object System.Drawing.Size(1040,860)
   $script:pn_form.WindowState = 'Maximized'; $script:pn_form.BackColor = [System.Drawing.Color]::Black
   $ico = Join-Path $script:eng 'override.ico'; if (Test-Path $ico) { try { $script:pn_form.Icon = New-Object System.Drawing.Icon $ico } catch {} }
@@ -1276,7 +1276,7 @@ function Show-PanelGui {
   $script:pn_form.Controls.Add($script:pn_box); $script:pn_rain.Panel.SendToBack()
 
   $hdr = New-Object System.Windows.Forms.Label; $hdr.Text=("OVERRIDE // CONTROL   "+[char]0x03A9); $hdr.Left=18; $hdr.Top=12; $hdr.Width=680; $hdr.Height=42; $hdr.ForeColor=$script:pn_pal.Accent; $hdr.BackColor=[System.Drawing.Color]::Transparent; $hdr.Font=New-Object System.Drawing.Font('Consolas',24,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($hdr)
-  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v10.1"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
+  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v10.4"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
   # APP THEME — skins THIS control panel (separate from each alarm's own ALARM THEME). Live re-skin.
   $appLbl = New-Object System.Windows.Forms.Label; $appLbl.Text="APP THEME"; $appLbl.Left=600; $appLbl.Top=52; $appLbl.Width=120; $appLbl.Height=20; $appLbl.TextAlign='MiddleRight'; $appLbl.ForeColor=$script:pn_pal.Accent2; $appLbl.BackColor=[System.Drawing.Color]::Transparent; $appLbl.Font=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($appLbl)
   $script:pn_appTheme = New-ThemeCombo; $script:pn_appTheme.Left=728; $script:pn_appTheme.Top=49; $script:pn_appTheme.Width=130; $script:pn_appTheme.Items.AddRange(@('green','red','cyber','1890','boring')); $script:pn_appTheme.Font=$fLb; Style-ThemeCombo $script:pn_appTheme $script:pn_pal
@@ -1292,7 +1292,7 @@ function Show-PanelGui {
   $script:pn_box.Controls.Add($script:pn_appTheme)
   $script:pn_armed = New-Object System.Windows.Forms.Label; $script:pn_armed.Left=842; $script:pn_armed.Top=22; $script:pn_armed.Width=148; $script:pn_armed.Height=26; $script:pn_armed.TextAlign='MiddleRight'; $script:pn_armed.BackColor=[System.Drawing.Color]::Transparent; $script:pn_armed.Font=New-Object System.Drawing.Font('Consolas',13,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($script:pn_armed)
   # AUTO-BURN toggle (top-right): delete expired one-time alarms 24h after they fire
-  $script:pn_eBurn = New-Object System.Windows.Forms.CheckBox; $script:pn_eBurn.Text="auto-burn old alarms (24h)"; $script:pn_eBurn.Left=556; $script:pn_eBurn.Top=24; $script:pn_eBurn.Width=280; $script:pn_eBurn.Height=22; $script:pn_eBurn.ForeColor=$script:pn_pal.Accent2; $script:pn_eBurn.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eBurn.Font=$fL; $script:pn_eBurn.Checked=$script:pn_autoBurn; $script:pn_box.Controls.Add($script:pn_eBurn); Style-Check $script:pn_eBurn $script:pn_pal $script:pn_pal.Accent2
+  $script:pn_eBurn = New-Object System.Windows.Forms.CheckBox; $script:pn_eBurn.Text="auto-burn old alarms (24h)"; $script:pn_eBurn.Left=330; $script:pn_eBurn.Top=52; $script:pn_eBurn.Width=250; $script:pn_eBurn.Height=22; $script:pn_eBurn.ForeColor=$script:pn_pal.Accent2; $script:pn_eBurn.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eBurn.Font=$fL; $script:pn_eBurn.Checked=$script:pn_autoBurn; $script:pn_box.Controls.Add($script:pn_eBurn); Style-Check $script:pn_eBurn $script:pn_pal $script:pn_pal.Accent2
   $script:pn_tip = New-Object System.Windows.Forms.ToolTip; $script:pn_tip.SetToolTip($script:pn_eBurn, "Auto-delete one-time (non-repeating) alarms 24h after their time has passed.`r`nDaily 'rhythm' alarms are NEVER burned.")
   $script:pn_eBurn.Add_CheckedChanged({
     $script:pn_autoBurn = [bool]$script:pn_eBurn.Checked
@@ -1304,7 +1304,7 @@ function Show-PanelGui {
     } else { Panel-SaveConfig; Panel-Log "auto-burn OFF - old one-time alarms will be kept" }
   })
 
-  $lh = New-Object System.Windows.Forms.Label; $lh.Text="ALARMS"; $lh.Left=20; $lh.Top=60; $lh.Width=200; $lh.ForeColor=$script:pn_pal.Accent2; $lh.BackColor=[System.Drawing.Color]::Transparent; $lh.Font=$fLb; $script:pn_box.Controls.Add($lh)
+  $lh = New-Object System.Windows.Forms.Label; $lh.Text="ALARMS"; $lh.Left=20; $lh.Top=68; $lh.Height=15; $lh.Width=200; $lh.ForeColor=$script:pn_pal.Accent2; $lh.BackColor=[System.Drawing.Color]::Transparent; $lh.Font=$fLb; $script:pn_box.Controls.Add($lh)
   $script:pn_list = New-Object System.Windows.Forms.Panel; $script:pn_list.Left=12; $script:pn_list.Top=84; $script:pn_list.Width=976; $script:pn_list.Height=190; $script:pn_list.BackColor=$script:pn_pal.Box; $script:pn_box.Controls.Add($script:pn_list)
   # ---- v6.3 custom themed scrollbar for the alarm list (replaces the white native bars) ----
   $script:pn_vOffset = 0; $script:pn_vMax = 0; $script:pn_sbDrag = $false
@@ -1352,12 +1352,12 @@ function Show-PanelGui {
   $script:pn_eRhythm.Add_CheckedChanged({ $script:pn_eDate.Enabled = -not $script:pn_eRhythm.Checked; if ($script:pn_eRhythm.Checked) { $script:pn_eDate.Text = '' } })
 
   $r2 = 372
-  (NewLbl "difficulty" 24 ($r2+4) 76 $false) | Out-Null
-  $script:pn_eDiff = New-ThemeCombo; $script:pn_eDiff.Left=104; $script:pn_eDiff.Top=$r2; $script:pn_eDiff.Width=100; $script:pn_eDiff.Font=$fL; $script:pn_eDiff.Items.AddRange(@('easy','medium','hard')); Style-PlainCombo $script:pn_eDiff $script:pn_pal; $script:pn_box.Controls.Add($script:pn_eDiff)
-  (NewLbl "questions" 220 ($r2+4) 80 $false) | Out-Null
-  $script:pn_eNumQ = New-ThemeCombo; $script:pn_eNumQ.Left=302; $script:pn_eNumQ.Top=$r2; $script:pn_eNumQ.Width=56; $script:pn_eNumQ.Font=$fL; $script:pn_eNumQ.Items.AddRange(@(1,2,3,4,5,6,7,8,9,10,12,15,20,25,30,40,50)); Style-PlainCombo $script:pn_eNumQ $script:pn_pal; $script:pn_box.Controls.Add($script:pn_eNumQ)
-  (NewLbl "duration" 374 ($r2+4) 68 $false) | Out-Null
-  $script:pn_eDur = NewTb 444 $r2 46; (NewLbl "min" 494 ($r2+4) 36 $false) | Out-Null
+  (NewLbl "difficulty" 24 ($r2+4) 96 $false) | Out-Null
+  $script:pn_eDiff = New-ThemeCombo; $script:pn_eDiff.Left=124; $script:pn_eDiff.Top=$r2; $script:pn_eDiff.Width=100; $script:pn_eDiff.Font=$fL; $script:pn_eDiff.Items.AddRange(@('easy','medium','hard')); Style-PlainCombo $script:pn_eDiff $script:pn_pal; $script:pn_box.Controls.Add($script:pn_eDiff)
+  (NewLbl "questions" 232 ($r2+4) 80 $false) | Out-Null
+  $script:pn_eNumQ = New-ThemeCombo; $script:pn_eNumQ.Left=316; $script:pn_eNumQ.Top=$r2; $script:pn_eNumQ.Width=56; $script:pn_eNumQ.Font=$fL; $script:pn_eNumQ.Items.AddRange(@(1,2,3,4,5,6,7,8,9,10,12,15,20,25,30,40,50)); Style-PlainCombo $script:pn_eNumQ $script:pn_pal; $script:pn_box.Controls.Add($script:pn_eNumQ)
+  (NewLbl "duration" 380 ($r2+4) 64 $false) | Out-Null
+  $script:pn_eDur = NewTb 448 $r2 46; (NewLbl "min" 498 ($r2+4) 34 $false) | Out-Null
   $script:pn_eLockVol = New-Object System.Windows.Forms.CheckBox; $script:pn_eLockVol.Text="lock volume"; $script:pn_eLockVol.Left=544; $script:pn_eLockVol.Top=($r2+2); $script:pn_eLockVol.Width=130; $script:pn_eLockVol.ForeColor=$dim; $script:pn_eLockVol.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eLockVol.Font=$fL; $script:pn_box.Controls.Add($script:pn_eLockVol); Style-Check $script:pn_eLockVol $script:pn_pal
   $script:pn_eNarr = New-Object System.Windows.Forms.CheckBox; $script:pn_eNarr.Text="narrator"; $script:pn_eNarr.Left=680; $script:pn_eNarr.Top=($r2+2); $script:pn_eNarr.Width=104; $script:pn_eNarr.ForeColor=$dim; $script:pn_eNarr.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eNarr.Font=$fL; $script:pn_box.Controls.Add($script:pn_eNarr); Style-Check $script:pn_eNarr $script:pn_pal
   $script:pn_eRain = New-Object System.Windows.Forms.CheckBox; $script:pn_eRain.Text="matrix rain"; $script:pn_eRain.Left=790; $script:pn_eRain.Top=($r2+2); $script:pn_eRain.Width=130; $script:pn_eRain.ForeColor=$dim; $script:pn_eRain.BackColor=[System.Drawing.Color]::Transparent; $script:pn_eRain.Font=$fL; $script:pn_box.Controls.Add($script:pn_eRain); Style-Check $script:pn_eRain $script:pn_pal

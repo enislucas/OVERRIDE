@@ -40,6 +40,7 @@ var OVERRIDE_CORE = (function () {
   }
   function normMath(s) {
     s = String(s).toLowerCase().replace(/\s+/g, "");
+    s = s.replace(/\*\*/g, "^").replace(/^\+/, "").replace(/^[xy]=/, "");
     var o = "", i, cc, ch;
     for (i = 0; i < s.length; i++) {
       cc = s.charCodeAt(i); ch = s.charAt(i);
@@ -170,12 +171,12 @@ var OVERRIDE_CORE = (function () {
   function genMatrix(d) {
     function M() { var lo = (d === "hard") ? -6 : 1, hi = 9; return [rnd(lo, hi), rnd(lo, hi), rnd(lo, hi), rnd(lo, hi)]; }
     var m = M(), x, r;
-    if (d === "easy") return { q: "trace [[" + m[0] + "," + m[1] + "],[" + m[2] + "," + m[3] + "]]", ans: [normMath("" + (m[0] + m[3]))], type: "math", cat: "MATRIX", hint: HINT_MATH };
+    if (d === "easy") return { q: "trace  [ " + m[0] + "  " + m[1] + " | " + m[2] + "  " + m[3] + " ]", ans: [normMath("" + (m[0] + m[3]))], type: "math", cat: "MATRIX", hint: HINT_MATH };
     if (d === "hard") {
       x = M(); r = [m[0] + x[0], m[1] + x[1], m[2] + x[2], m[3] + x[3]];
-      return { q: "[[" + m[0] + "," + m[1] + "],[" + m[2] + "," + m[3] + "]] + [[" + x[0] + "," + x[1] + "],[" + x[2] + "," + x[3] + "]]", ans: [normVec(r[0] + "," + r[1] + "," + r[2] + "," + r[3])], type: "vec", cat: "MATRIX (add, row by row)", hint: HINT_VEC };
+      return { q: "[ " + m[0] + "  " + m[1] + " | " + m[2] + "  " + m[3] + " ]  +  [ " + x[0] + "  " + x[1] + " | " + x[2] + "  " + x[3] + " ]", ans: [normVec(r[0] + "," + r[1] + "," + r[2] + "," + r[3])], type: "vec", cat: "MATRIX (add, row by row)", hint: HINT_VEC };
     }
-    return { q: "det [[" + m[0] + "," + m[1] + "],[" + m[2] + "," + m[3] + "]]", ans: [normMath("" + (m[0] * m[3] - m[1] * m[2]))], type: "math", cat: "MATRIX", hint: HINT_MATH };
+    return { q: "det  [ " + m[0] + "  " + m[1] + " | " + m[2] + "  " + m[3] + " ]", ans: [normMath("" + (m[0] * m[3] - m[1] * m[2]))], type: "math", cat: "MATRIX", hint: HINT_MATH };
   }
 
   var CAP = {
@@ -443,6 +444,7 @@ var OVERRIDE_UI = (function () {
       '<div class="cat" id="qcat"></div>' +
       '<div id="qtext"></div>' +
       '<div id="ansrow"><input id="ans" maxlength="40" autocomplete="off" /><button id="go">&gt; SUBMIT</button></div>' +
+      '<div id="norm"></div>' +
       '<div id="hint"></div><div id="msg">&nbsp;</div>' +
       '</div>' +
       '<div id="done"><h1 id="granted">&#10003; ACCESS GRANTED</h1><div id="quote"></div><div id="stats"></div><div id="stamp"></div></div>' +
@@ -509,6 +511,7 @@ var OVERRIDE_UI = (function () {
     el('qcat').innerHTML = Q.cat;
     el('hint').innerHTML = Q.hint || "";
     el('ans').value = ""; el('ans').className = "";
+    try { el('norm').innerHTML = ""; } catch (e) { }
     revealText(Q.q);
     refreshProg();
     armQTimer();                 // v6.6: start this question's 30s "answer or volume resets" window
@@ -709,6 +712,9 @@ var OVERRIDE_UI = (function () {
     el('errX').onclick = hideErr;
     el('errOk').onclick = hideErr;
     el('errNo').onclick = function () { hideErr(); el('msg').innerHTML = '<span class="bad">&gt; No.</span>'; };
+    el('ans').onkeyup = function () {
+      try { var v = el('ans').value; el('norm').innerHTML = (v && Q) ? ('reads as: <b>' + esc(normFor(Q, v)) + '</b>') : ''; } catch (e) { }
+    };
     el('ans').onkeydown = function (ev) {
       ev = ev || window.event;
       var k = ev.keyCode || ev.which;

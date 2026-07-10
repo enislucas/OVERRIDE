@@ -239,3 +239,6 @@ input#ans{font-size:26px;width:420px;padding:9px 12px;border-radius:8px;outline:
 .t-boring #quote{color:#c9d3e6;}
 .t-boring #stats{color:#8b93a3;}
 .t-boring #stamp{color:#7cd0f5;letter-spacing:3px;}
+
+/* v10.4: live answer-interpretation preview */
+#norm{font-size:13px;margin-top:8px;min-height:18px;opacity:.8;letter-spacing:.5px;}
