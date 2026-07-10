@@ -21,3 +21,14 @@ alarm.mp3
 Thumbs.db
 desktop.ini
 .vscode/
+
+# local-only archives (removed from GitHub 2026-07-10; history preserved in tags v10.1/v10.2/v4-stable/v5-stable)
+v1/
+v2/
+v3/
+v4/
+v5/
+v6/
+v7/
+v8/
+v9/

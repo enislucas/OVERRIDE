@@ -905,6 +905,7 @@ function Register-Alarms {
     Register-ScheduledTask -TaskName "OVERRIDE_V10_safe_$($a.id)" -Action $safeAction -Trigger $safeTrigger -Settings $safeSettings -Principal $principal -Force | Out-Null
     Write-Host "  armed  $($a.label)  $desc  [theme: $(Get-Prop $a 'theme' 'green')]" -ForegroundColor Green; $n++
   }
+  try { Set-Content -Path (Join-Path $script:root 'session.armtz') -Value ((Get-TimeZone).Id) -Encoding ASCII } catch {}
   Write-Host "$n alarm(s) armed (v10). Legacy OVERRIDE_V6_*/V5_*/V4_*/V3_*/V2_* tasks were replaced." -ForegroundColor Green
 }
 function Get-ArmedCount {
@@ -1464,4 +1465,11 @@ if ($Ring) {
 $script:pn_testSec = $PanelTestSec
 $script:pn_autoDeploy = $AutoDeploy
 # restart loop: changing the APP THEME sets pn_restart + closes the form -> rebuild with the new skin
+# TZ SAFEGUARD (v10.3, from the NL->RO incident): scheduled tasks fire on the machine clock; if the
+# timezone changed since the last arm, re-register so next-runs match the NEW local wall time.
+try {
+  $tzf = Join-Path $script:root 'session.armtz'
+  if (Test-Path $tzf) { $old = (Get-Content $tzf -Raw).Trim(); if ($old -and $old -ne (Get-TimeZone).Id) {
+    Write-Host "timezone changed ($old -> $((Get-TimeZone).Id)) - re-arming alarms" -ForegroundColor Yellow; Register-Alarms } }
+} catch {}
 do { $script:pn_restart = $false; Show-PanelGui; $script:pn_testSec = 0; $script:pn_autoDeploy = $false } while ($script:pn_restart)
