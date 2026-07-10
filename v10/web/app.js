@@ -522,7 +522,7 @@
       r.appendChild(rc);
     }
     var brand = document.createElement('div'); brand.className = 'brandrow';
-    brand.innerHTML = '<div class="logo">OVERRIDE</div><div class="tag">WAKE PROTOCOL // ' + APPV + '.2 - ' + PNAME + ' (universal)</div>';
+    brand.innerHTML = '<div class="logo">OVERRIDE</div><div class="tag">WAKE PROTOCOL // ' + APPV + '.3 - ' + PNAME + ' (universal)</div>';
     r.appendChild(brand);
 
     // ---- alarm list ----
