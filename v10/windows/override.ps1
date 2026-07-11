@@ -897,12 +897,22 @@ function Register-Alarms {
     # ambushes, never wakes. WakeToRun still wakes the PC on time from real sleep (S3). The ring path also
     # guards with Get-RingLatenessMin so even a stale trigger from an old/other-version task can't ambush.
     $settings = New-ScheduledTaskSettingsSet -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes ($durMin + 4)) -MultipleInstances IgnoreNew
-    $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
-    Register-ScheduledTask -TaskName "OVERRIDE_V10_$($a.id)" -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
+    # v10.6: $env:USERNAME fails Register-ScheduledTask with 0x80070057 ("parameter is incorrect") on
+  # Microsoft-account / special usernames. Use the full DOMAIN\user identity; if even that fails,
+  # register WITHOUT an explicit principal (defaults to the current interactive user).
+  $uid = try { [System.Security.Principal.WindowsIdentity]::GetCurrent().Name } catch { $env:USERNAME }
+  $principal = try { New-ScheduledTaskPrincipal -UserId $uid -LogonType Interactive -RunLevel Limited } catch { $null }
+    try {
+      if (-not $principal) { throw "no principal" }
+      Register-ScheduledTask -TaskName "OVERRIDE_V10_$($a.id)" -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
+    } catch { Register-ScheduledTask -TaskName "OVERRIDE_V10_$($a.id)" -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null }
     $safeArg = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$($script:eng)\override.ps1`" -Unlock"
     $safeAction = New-ScheduledTaskAction -Execute $pw -Argument $safeArg -WorkingDirectory $script:eng
     $safeSettings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew
-    Register-ScheduledTask -TaskName "OVERRIDE_V10_safe_$($a.id)" -Action $safeAction -Trigger $safeTrigger -Settings $safeSettings -Principal $principal -Force | Out-Null
+    try {
+      if (-not $principal) { throw "no principal" }
+      Register-ScheduledTask -TaskName "OVERRIDE_V10_safe_$($a.id)" -Action $safeAction -Trigger $safeTrigger -Settings $safeSettings -Principal $principal -Force | Out-Null
+    } catch { Register-ScheduledTask -TaskName "OVERRIDE_V10_safe_$($a.id)" -Action $safeAction -Trigger $safeTrigger -Settings $safeSettings -Force | Out-Null }
     Write-Host "  armed  $($a.label)  $desc  [theme: $(Get-Prop $a 'theme' 'green')]" -ForegroundColor Green; $n++
   }
   try { Set-Content -Path (Join-Path $script:root 'session.armtz') -Value ((Get-TimeZone).Id) -Encoding ASCII } catch {}
@@ -1115,7 +1125,8 @@ function Panel-CollectEditor {
     Rain=[bool]$script:pn_eRain.Checked; Theme=[string]$script:pn_eTheme.SelectedItem; Soften=[bool]$script:pn_eSoften.Checked; Cats=$cats }
 }
 function Panel-SaveAlarm {
-  $a = Panel-CollectEditor; if (-not $a) { return }
+  $a = Panel-CollectEditor
+  if (-not $a) { $a = New-Alarm $script:cfg.defaults; Panel-Log "editor empty -> test ring with your default settings" }
   if ($script:pn_editId) { $script:pn_alarms = @($script:pn_alarms | ForEach-Object { if ($_.Id -eq $script:pn_editId) { $a } else { $_ } }) }
   else { $script:pn_alarms += $a }
   Panel-Persist
@@ -1179,7 +1190,8 @@ function Panel-UpdateStatus {
   if ($next) { $script:pn_status.Text = ("next: {0}   in {1}" -f $next.ToString('ddd HH:mm'), (Format-Span ($next - (Get-Date)))) } else { $script:pn_status.Text = "no upcoming alarms" }
 }
 function Panel-Test {
-  $a = Panel-CollectEditor; if (-not $a) { return }
+  $a = Panel-CollectEditor
+  if (-not $a) { $a = New-Alarm $script:cfg.defaults; Panel-Log "editor empty -> test ring with your default settings" }
   $tc = [ordered]@{ numQuestions=$a.NumQ; difficulty=$a.Diff; categories=$a.Cats; lockVolume=$a.LockVol; narrator=$a.Narrator; matrixRain=$a.Rain; theme=$a.Theme; softenVolume=$a.Soften }
   ($tc | ConvertTo-Json -Compress) | Out-File -FilePath (Join-Path $script:root 'session.testcfg') -Encoding ascii
   Panel-Log "launching test ring (solve it or wait 45s)... theme: $($a.Theme)"
@@ -1251,7 +1263,7 @@ function Show-PanelGui {
   $fL=New-Object System.Drawing.Font('Consolas',10); $fLb=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold)
 
   $script:pn_form = New-Object System.Windows.Forms.Form
-  $script:pn_form.Text = "OVERRIDE // CONTROL v10.5"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
+  $script:pn_form.Text = "OVERRIDE // CONTROL v10.6"; $script:pn_form.FormBorderStyle = 'Sizable'; $script:pn_form.MaximizeBox = $true
   $script:pn_form.StartPosition = 'CenterScreen'; $script:pn_form.MinimumSize = New-Object System.Drawing.Size(1040,860)
   $script:pn_form.WindowState = 'Maximized'; $script:pn_form.BackColor = [System.Drawing.Color]::Black
   $ico = Join-Path $script:eng 'override.ico'; if (Test-Path $ico) { try { $script:pn_form.Icon = New-Object System.Drawing.Icon $ico } catch {} }
@@ -1276,7 +1288,7 @@ function Show-PanelGui {
   $script:pn_form.Controls.Add($script:pn_box); $script:pn_rain.Panel.SendToBack()
 
   $hdr = New-Object System.Windows.Forms.Label; $hdr.Text=("OVERRIDE // CONTROL   "+[char]0x03A9); $hdr.Left=18; $hdr.Top=12; $hdr.Width=680; $hdr.Height=42; $hdr.ForeColor=$script:pn_pal.Accent; $hdr.BackColor=[System.Drawing.Color]::Transparent; $hdr.Font=New-Object System.Drawing.Font('Consolas',24,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($hdr)
-  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v10.5"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
+  $sub = New-Object System.Windows.Forms.Label; $sub.Text="WAKE PROTOCOL // v10.6"; $sub.Left=20; $sub.Top=52; $sub.Width=300; $sub.Height=18; $sub.ForeColor=$script:pn_pal.Dim; $sub.BackColor=[System.Drawing.Color]::Transparent; $sub.Font=New-Object System.Drawing.Font('Consolas',9); $script:pn_box.Controls.Add($sub)
   # APP THEME — skins THIS control panel (separate from each alarm's own ALARM THEME). Live re-skin.
   $appLbl = New-Object System.Windows.Forms.Label; $appLbl.Text="APP THEME"; $appLbl.Left=600; $appLbl.Top=52; $appLbl.Width=120; $appLbl.Height=20; $appLbl.TextAlign='MiddleRight'; $appLbl.ForeColor=$script:pn_pal.Accent2; $appLbl.BackColor=[System.Drawing.Color]::Transparent; $appLbl.Font=New-Object System.Drawing.Font('Consolas',10,[System.Drawing.FontStyle]::Bold); $script:pn_box.Controls.Add($appLbl)
   $script:pn_appTheme = New-ThemeCombo; $script:pn_appTheme.Left=728; $script:pn_appTheme.Top=49; $script:pn_appTheme.Width=130; $script:pn_appTheme.Items.AddRange(@('green','red','cyber','1890','boring')); $script:pn_appTheme.Font=$fLb; Style-ThemeCombo $script:pn_appTheme $script:pn_pal
